@@ -834,4 +834,7 @@ if (require.main === module) {
   });
 }
 
-module.exports = { app, getProgressionRecommendation, accountGenders };
+app.getProgressionRecommendation = getProgressionRecommendation;
+app.accountGenders = accountGenders;
+
+module.exports = app;
