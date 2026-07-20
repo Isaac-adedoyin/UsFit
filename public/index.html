@@ -1,0 +1,799 @@
+<!DOCTYPE html>
+<html lang="en">
+<head>
+  <meta charset="UTF-8">
+  <meta name="viewport" content="width=device-width, initial-scale=1.0">
+  <title>UsFit — Couples Gym Planner & Workout Tracker</title>
+  
+  <!-- Font setup -->
+  <link rel="preconnect" href="https://fonts.googleapis.com">
+  <link rel="preconnect" href="https://fonts.gstatic.com" crossorigin>
+  <link href="https://fonts.googleapis.com/css2?family=Inter:wght@300;400;500;600;700&family=Outfit:wght@400;500;600;700;800&display=swap" rel="stylesheet">
+  
+  <link rel="stylesheet" href="styles.css">
+</head>
+<body class="dark-theme">
+  <!-- Audio element for rest timers -->
+  <audio id="timer-sound" src="data:audio/wav;base64,UklGRigAAABXQVZFZm10IBAAAAABAAEARKwAAIhYAQACABAAZGF0YQQAAAAAAA==\"></audio>
+
+  <!-- App Header / Navigation (hidden when not logged in) -->
+  <header id="main-nav" class="nav-hidden">
+    <div class="nav-container">
+      <div class="nav-logo">
+        <span class="logo-glow">Us</span><span class="logo-text">Fit</span>
+      </div>
+      <nav class="nav-links">
+        <a href="#dashboard" class="nav-link active" data-view="dashboard">
+          <svg width="20" height="20" viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="2"><path d="M3 9l9-7 9 7v11a2 2 0 0 1-2 2H5a2 2 0 0 1-2-2z"/><polyline points="9 22 9 12 15 12 15 22"/></svg>
+          <span>Today</span>
+        </a>
+        <a href="#planner" class="nav-link" data-view="planner">
+          <svg width="20" height="20" viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="2"><rect x="3" y="4" width="18" height="18" rx="2" ry="2"/><line x1="16" y1="2" x2="16" y2="6"/><line x1="8" y1="2" x2="8" y2="6"/><line x1="3" y1="10" x2="21" y2="10"/></svg>
+          <span>Planner</span>
+        </a>
+        <a href="#program" class="nav-link" data-view="program">
+          <svg width="20" height="20" viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="2"><path d="M12 20h9"/><path d="M16.5 3.5a2.121 2.121 0 0 1 3 3L7 19l-4 1 1-4L16.5 3.5z"/></svg>
+          <span>Program</span>
+        </a>
+        <a href="#progress" class="nav-link" data-view="progress">
+          <svg width="20" height="20" viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="2"><line x1="18" y1="20" x2="18" y2="10"/><line x1="12" y1="20" x2="12" y2="4"/><line x1="6" y1="20" x2="6" y2="14"/></svg>
+          <span>Progress</span>
+        </a>
+        <a href="#settings" class="nav-link" data-view="settings">
+          <svg width="20" height="20" viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="2"><circle cx="12" cy="12" r="3"/><path d="M19.4 15a1.65 1.65 0 0 0 .33 1.82l.06.06a2 2 0 1 1-2.83 2.83l-.06-.06a1.65 1.65 0 0 0-1.82-.33 1.65 1.65 0 0 0-1 1.51V21a2 2 0 0 1-4 0v-.09A1.65 1.65 0 0 0 9 19.4a1.65 1.65 0 0 0-1.82.33l-.06.06a2 2 0 1 1-2.83-2.83l.06-.06a1.65 1.65 0 0 0 .33-1.82 1.65 1.65 0 0 0-1.51-1H3a2 2 0 0 1 0-4h.09A1.65 1.65 0 0 0 4.6 9a1.65 1.65 0 0 0-.33-1.82l-.06-.06a2 2 0 1 1 2.83-2.83l.06.06a1.65 1.65 0 0 0 1.82.33H9a1.65 1.65 0 0 0 1-1.51V3a2 2 0 0 1 4 0v.09a1.65 1.65 0 0 0 1 1.51 1.65 1.65 0 0 0 1.82-.33l.06-.06a2 2 0 1 1 2.83 2.83l-.06.06a1.65 1.65 0 0 0-.33 1.82V9a1.65 1.65 0 0 0 1.51 1H21a2 2 0 0 1 0 4h-.09a1.65 1.65 0 0 0-1.51 1z"/></svg>
+          <span>Settings</span>
+        </a>
+      </nav>
+      <div class="nav-user">
+        <span id="user-avatar" class="avatar-badge">M</span>
+        <button id="logout-btn" title="Logout" class="btn-icon">
+          <svg width="20" height="20" viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="2"><path d="M9 21H5a2 2 0 0 1-2-2V5a2 2 0 0 1 2-2h4"/><polyline points="16 17 21 12 16 7"/><line x1="21" y1="12" x2="9" y2="12"/></svg>
+        </button>
+      </div>
+    </div>
+  </header>
+
+  <!-- Active Workout floating banner (displayed when workout is paused/in-background) -->
+  <div id="active-session-banner" class="banner-hidden">
+    <div class="banner-content">
+      <span class="pulse-indicator"></span>
+      <span class="banner-text">Active session in progress...</span>
+      <button id="resume-banner-btn" class="btn btn-primary btn-sm">Resume Workout</button>
+    </div>
+  </div>
+
+  <main class="main-content">
+    
+    <!-- 1. LOGIN & REGISTER VIEW -->
+    <section id="login-view" class="view-container view-active">
+      <div class="login-card glass-panel">
+        <div class="login-header">
+          <div class="login-logo"><span class="logo-glow">Us</span><span>Fit</span></div>
+          <p id="login-subtitle">Sign in to plan & track workouts together</p>
+        </div>
+        
+        <!-- Registration tab warning -->
+        <div id="register-setup-alert" class="alert alert-info hidden">
+          <strong>First Time Setup!</strong> This email is approved. Enter your name to set up your profile.
+        </div>
+
+        <form id="auth-form" class="form-group">
+          <div class="form-control">
+            <label for="auth-email">Approved Email</label>
+            <input type="email" id="auth-email" placeholder="name@example.com" required autocomplete="email">
+          </div>
+          
+          <div class="form-control" id="displayName-field-container" style="display: none;">
+            <label for="auth-name">Your First Name</label>
+            <input type="text" id="auth-name" placeholder="e.g. David" autocomplete="name">
+            
+          </div>
+
+          <div id="auth-error-msg" class="error-text hidden"></div>
+
+          <button type="submit" id="auth-submit-btn" class="btn btn-accent btn-full">Sign In</button>
+        </form>
+
+        <div class="login-footer">
+          <p id="auth-toggle-note">Enter your approved email to sign in or set up your profile.</p>
+        </div>
+      </div>
+    </section>
+
+    <!-- 2. DASHBOARD VIEW -->
+    <section id="dashboard-view" class="view-container hidden">
+      <div class="dashboard-header">
+        <h1 class="view-title">Our Gym Dashboard</h1>
+        <p class="text-secondary" id="dashboard-date-str">Monday, July 20, 2026</p>
+      </div>
+
+      <!-- Weekly Progress Summary Card -->
+      <div class="week-progress-card glass-panel gradient-border">
+        <div class="progress-details">
+          <div>
+            <h3>Weekly Consistency</h3>
+            <p class="text-secondary" id="progress-weeks-title">Setting up training days...</p>
+          </div>
+          <div class="progress-percent" id="weekly-percent-text">0%</div>
+        </div>
+        <div class="progress-bar-container">
+          <div class="progress-bar-fill" id="weekly-progress-bar" style="width: 0%"></div>
+        </div>
+        <div class="session-slots-container" id="session-slots-grid">
+          <!-- Dynamically populated slots -->
+        </div>
+      </div>
+
+      <!-- Scheduled Session of the Day -->
+      <div id="today-workout-panel" class="today-workout-box glass-panel">
+        <!-- Will show scheduled workout or prompts to schedule -->
+      </div>
+
+      <!-- Readiness Ratings Modal Overlay (for starting a workout) -->
+      <div id="readiness-overlay" class="modal-overlay hidden">
+        <div class="modal-card glass-panel">
+          <h2>Ready to Train?</h2>
+          <p class="text-secondary">Rate your readiness before we hit the treadmill.</p>
+          
+          <form id="readiness-form">
+            <!-- User 1 Readiness -->
+            <div class="user-readiness-row">
+              <h3 id="readiness-user1-name">Me</h3>
+              <div class="rating-picker" data-user-idx="0">
+                <button type="button" class="rate-btn" data-value="1">⚡ 1 <small>Low</small></button>
+                <button type="button" class="rate-btn" data-value="2">⚡ 2</button>
+                <button type="button" class="rate-btn" data-value="3" class="active">⚡ 3 <small>Avg</small></button>
+                <button type="button" class="rate-btn" data-value="4">⚡ 4</button>
+                <button type="button" class="rate-btn" data-value="5">⚡ 5 <small>Peak</small></button>
+              </div>
+            </div>
+
+            <!-- User 2 Readiness -->
+            <div class="user-readiness-row">
+              <h3 id="readiness-user2-name">Girlfriend</h3>
+              <div class="rating-picker" data-user-idx="1">
+                <button type="button" class="rate-btn" data-value="1">⚡ 1 <small>Low</small></button>
+                <button type="button" class="rate-btn" data-value="2">⚡ 2</button>
+                <button type="button" class="rate-btn" data-value="3" class="active">⚡ 3 <small>Avg</small></button>
+                <button type="button" class="rate-btn" data-value="4">⚡ 4</button>
+                <button type="button" class="rate-btn" data-value="5">⚡ 5 <small>Peak</small></button>
+              </div>
+            </div>
+
+            <div class="modal-actions">
+              <button type="button" id="cancel-readiness-btn" class="btn btn-secondary">Back</button>
+              <button type="submit" class="btn btn-accent">Start Warm-up</button>
+            </div>
+          </form>
+        </div>
+      </div>
+    </section>
+
+    <!-- 3. WEEKLY PLANNER VIEW -->
+    <section id="planner-view" class="view-container hidden">
+      <div class="dashboard-header">
+        <h1 class="view-title">Weekly Schedule Planner</h1>
+        <p class="text-secondary">Plan exactly three sessions per week and assign Day 1, 2, and 3.</p>
+      </div>
+
+      <div class="planner-box glass-panel">
+        <h2>Schedule the Upcoming Week</h2>
+        <p class="text-secondary">We recommend keeping at least one recovery day between active workout sessions.</p>
+        
+        <form id="weekly-plan-form" class="form-group margin-top-md">
+          <!-- Week Select -->
+          <div class="form-control">
+            <label for="planner-week-select">Select Week</label>
+            <select id="planner-week-select" class="input-select">
+              <!-- Dynamically populated weeks -->
+            </select>
+          </div>
+
+          <!-- Training Days Checkboxes -->
+          <div class="form-control">
+            <label>Select Exactly Three Workout Days</label>
+            <div class="checkbox-grid">
+              <label class="checkbox-tile">
+                <input type="checkbox" name="train-days" value="Monday">
+                <span class="tile-label">Monday</span>
+              </label>
+              <label class="checkbox-tile">
+                <input type="checkbox" name="train-days" value="Tuesday">
+                <span class="tile-label">Tuesday</span>
+              </label>
+              <label class="checkbox-tile">
+                <input type="checkbox" name="train-days" value="Wednesday">
+                <span class="tile-label">Wednesday</span>
+              </label>
+              <label class="checkbox-tile">
+                <input type="checkbox" name="train-days" value="Thursday">
+                <span class="tile-label">Thursday</span>
+              </label>
+              <label class="checkbox-tile">
+                <input type="checkbox" name="train-days" value="Friday">
+                <span class="tile-label">Friday</span>
+              </label>
+              <label class="checkbox-tile">
+                <input type="checkbox" name="train-days" value="Saturday">
+                <span class="tile-label">Saturday</span>
+              </label>
+              <label class="checkbox-tile">
+                <input type="checkbox" name="train-days" value="Sunday">
+                <span class="tile-label">Sunday</span>
+              </label>
+            </div>
+          </div>
+
+          <!-- Program Mapping details (Day 1, Day 2, Day 3 mapping) -->
+          <div id="mapping-description" class="alert alert-info hidden">
+            <!-- Day 1 -> First Day selected, Day 2 -> Second, etc. -->
+          </div>
+
+          <!-- Recovery Warnings Box -->
+          <div id="planner-warnings-box" class="alert alert-warning hidden">
+            <!-- Dynamic alerts when user chooses consecutive days -->
+          </div>
+
+          <button type="submit" id="save-week-plan-btn" class="btn btn-accent btn-full" disabled>Lock Schedule</button>
+        </form>
+      </div>
+
+      <div class="reschedule-box glass-panel margin-top-md" id="reschedule-section" style="display: none;">
+        <h3>Reschedule a Session</h3>
+        <p class="text-secondary">Missed or need to shift a workout? Move it to another day this week.</p>
+        <div class="form-row margin-top-sm">
+          <div class="form-control">
+            <label for="resched-from">Active Session</label>
+            <select id="resched-from" class="input-select"></select>
+          </div>
+          <div class="form-control">
+            <label for="resched-to">New Day</label>
+            <select id="resched-to" class="input-select"></select>
+          </div>
+        </div>
+        <button id="reschedule-submit-btn" class="btn btn-primary margin-top-sm">Move Session</button>
+      </div>
+    </section>
+
+    <!-- 4. ACTIVE WORKOUT VIEW -->
+    <section id="workout-view" class="view-container hidden">
+      <!-- Top Wizard Tracker -->
+      <div class="workout-wizard-steps">
+        <div class="step-indicator active" id="wizard-step-treadmill">Warm-Up</div>
+        <div class="step-indicator" id="wizard-step-strength">Working Sets</div>
+        <div class="step-indicator" id="wizard-step-stretching">Stretching</div>
+        <div class="step-indicator" id="wizard-step-summary">Summary</div>
+      </div>
+
+      <!-- SECTION A: TREADMILL WARM-UP (60 mins) -->
+      <div id="phase-treadmill" class="workout-phase-container">
+        <div class="phase-header">
+          <h2>Phase 1: Treadmill Warm-Up (60 Minutes)</h2>
+          <p class="text-secondary">Warm up the body and elevate heart rate through stage-based walking.</p>
+        </div>
+
+        <div class="timer-display-box glass-panel">
+          <div class="giant-timer" id="treadmill-timer-clock">60:00</div>
+          <div class="stage-label" id="treadmill-stage-name">Stage 1: Easy Walking</div>
+          
+          <div class="treadmill-media-container margin-top-sm" id="treadmill-media-container" style="max-height: 150px; display: flex; justify-content: center; align-items: center; overflow: hidden;">
+            <!-- Treadmill image gets injected here -->
+          </div>
+
+          <div class="timer-controls">
+            <button class="btn btn-secondary" id="treadmill-pause-btn">Pause</button>
+            <button class="btn btn-accent" id="treadmill-start-btn" style="display:none;">Resume</button>
+            <button class="btn btn-secondary btn-sm" id="treadmill-skip-btn">Skip Warm-up</button>
+          </div>
+        </div>
+
+        <!-- Treadmill Stage Progress -->
+        <div class="treadmill-stages-tracker margin-top-md" id="treadmill-stages-list">
+          <!-- Dynamically populated stages -->
+        </div>
+
+        <!-- Treadmill Input Logs for Both Partners -->
+        <div class="partner-logs-grid margin-top-md">
+          <!-- User 1 Treadmill Logs -->
+          <div class="partner-log-card glass-panel" id="treadmill-log-u1">
+            <h3 class="user-header">User 1</h3>
+            <div class="form-grid">
+              <div class="form-control">
+                <label>Speed (km/h)</label>
+                <input type="number" step="0.1" class="treadmill-input-speed" placeholder="e.g. 5.2">
+              </div>
+              <div class="form-control">
+                <label>Incline (%)</label>
+                <input type="number" step="0.5" class="treadmill-input-incline" placeholder="e.g. 2.0">
+              </div>
+              <div class="form-control">
+                <label>Distance (km)</label>
+                <input type="number" step="0.01" class="treadmill-input-distance" placeholder="e.g. 4.8">
+              </div>
+              <div class="form-control">
+                <label>Calories</label>
+                <input type="number" class="treadmill-input-calories" placeholder="e.g. 350">
+              </div>
+              <div class="form-control">
+                <label>Heart Rate (bpm)</label>
+                <input type="number" class="treadmill-input-hr" placeholder="e.g. 120">
+              </div>
+              <div class="form-control">
+                <label>Notes</label>
+                <input type="text" class="treadmill-input-notes" placeholder="Felt good, steady...">
+              </div>
+            </div>
+          </div>
+
+          <!-- User 2 Treadmill Logs -->
+          <div class="partner-log-card glass-panel" id="treadmill-log-u2">
+            <h3 class="user-header">User 2</h3>
+            <div class="form-grid">
+              <div class="form-control">
+                <label>Speed (km/h)</label>
+                <input type="number" step="0.1" class="treadmill-input-speed" placeholder="e.g. 4.8">
+              </div>
+              <div class="form-control">
+                <label>Incline (%)</label>
+                <input type="number" step="0.5" class="treadmill-input-incline" placeholder="e.g. 1.5">
+              </div>
+              <div class="form-control">
+                <label>Distance (km)</label>
+                <input type="number" step="0.01" class="treadmill-input-distance" placeholder="e.g. 4.2">
+              </div>
+              <div class="form-control">
+                <label>Calories</label>
+                <input type="number" class="treadmill-input-calories" placeholder="e.g. 280">
+              </div>
+              <div class="form-control">
+                <label>Heart Rate (bpm)</label>
+                <input type="number" class="treadmill-input-hr" placeholder="e.g. 110">
+              </div>
+              <div class="form-control">
+                <label>Notes</label>
+                <input type="text" class="treadmill-input-notes" placeholder="Tired today, walked slower...">
+              </div>
+            </div>
+          </div>
+        </div>
+
+        <div class="workout-actions margin-top-md">
+          <button class="btn btn-accent btn-lg btn-full" id="complete-warmup-btn">Save Warm-Up & Start Lifting</button>
+        </div>
+      </div>
+
+      <!-- SECTION B: WORKING STRENGTH SETS -->
+      <div id="phase-strength" class="workout-phase-container hidden">
+        <div class="exercise-navigator">
+          <button class="btn btn-secondary btn-sm" id="prev-exercise-btn">&larr; Prev Exercise</button>
+          <span class="exercise-index-text" id="exercise-index-indicator">Exercise 1 of 8</span>
+          <button class="btn btn-secondary btn-sm" id="next-exercise-btn">Next Exercise &rarr;</button>
+        </div>
+
+        <div class="exercise-details-grid margin-top-sm">
+          <!-- Visual and Instructions Card -->
+          <div class="exercise-visual-card glass-panel">
+            <h2 id="workout-ex-name">Flat Barbell Bench Press</h2>
+            <p class="muscle-badge" id="workout-ex-muscles">Chest, Front Deltoids</p>
+            
+            <div class="exercise-media-placeholder" id="workout-ex-media">
+              <!-- SVG Illustration gets injected here -->
+            </div>
+
+            <!-- Accordion Details -->
+            <details class="exercise-instructions margin-top-sm">
+              <summary>Show Instructions & Safety Notes</summary>
+              <div class="instructions-content text-secondary">
+                <p><strong>Setup:</strong> <span id="workout-ex-setup">...</span></p>
+                <p><strong>Movement:</strong> <span id="workout-ex-movement">...</span></p>
+                <p><strong>Breathing:</strong> <span id="workout-ex-breathing">...</span></p>
+                <p><strong>Common Mistakes:</strong> <span id="workout-ex-mistakes">...</span></p>
+                <p><strong>Safety:</strong> <span id="workout-ex-safety">...</span></p>
+                <p><strong>Cues:</strong> <span id="workout-ex-cues">...</span></p>
+              </div>
+            </details>
+
+            <div class="exercise-actions-buttons margin-top-sm">
+              <button class="btn btn-secondary btn-sm" id="swap-exercise-btn">Swap / Replace</button>
+              <button class="btn btn-secondary btn-sm" id="skip-exercise-btn">Skip Exercise</button>
+            </div>
+          </div>
+
+          <!-- Logging Panel for Both Users -->
+          <div class="exercise-logging-card glass-panel">
+            <!-- Giant Target Goal Banner -->
+            <div class="workout-goal-banner" id="workout-goal-banner">
+              Perform <span id="workout-goal-sets">3</span> sets of <span id="workout-goal-reps">8-12</span> reps
+            </div>
+
+            <!-- Tab Switcher for Users -->
+            <div class="workout-user-tabs" id="workout-user-tabs">
+              <!-- buttons dynamically populated or active toggled -->
+            </div>
+
+            <!-- Exercise set work timer (displayed for timed drills like Plank) -->
+            <div class="exercise-work-timer-box margin-top-sm hidden" id="exercise-work-timer-box">
+              <div class="work-timer-header">Set Hold Timer</div>
+              <div class="work-timer-clock" id="work-timer-clock">00:30</div>
+              <div class="work-timer-controls">
+                <button class="btn btn-secondary btn-xs" id="work-timer-minus">-5s</button>
+                <button class="btn btn-primary btn-xs" id="work-timer-toggle">Start Hold</button>
+                <button class="btn btn-secondary btn-xs" id="work-timer-plus">+5s</button>
+              </div>
+            </div>
+
+            <!-- Global rest timer -->
+            <div class="exercise-rest-timer-box margin-top-sm">
+              <div class="rest-timer-header">Rest Timer</div>
+              <div class="rest-timer-clock" id="rest-timer-clock">00:00</div>
+              <div class="rest-timer-controls">
+                <button class="btn btn-secondary btn-xs" id="rest-timer-minus">-15s</button>
+                <button class="btn btn-primary btn-xs" id="rest-timer-toggle">Start Rest</button>
+                <button class="btn btn-secondary btn-xs" id="rest-timer-plus">+15s</button>
+              </div>
+            </div>
+
+            <!-- Tabbed User Logging Block -->
+            <div class="active-user-log-container margin-top-sm">
+              <div class="user-lift-card" id="active-user-lift-card">
+                <h3 id="active-user-lift-name">Me</h3>
+                
+                <!-- Progression Recommendations -->
+                <div class="progression-pill" id="active-user-recs">
+                  Target: 3 sets × 6-10. Recommend: 30kg.
+                </div>
+
+                <!-- Input grid list -->
+                <div class="sets-logger-table">
+                  <div class="table-header-row">
+                    <span>Set</span>
+                    <span>Weight</span>
+                    <span>Reps</span>
+                    <span>Diff</span>
+                    <span>Done</span>
+                  </div>
+                  <div class="sets-logger-rows" id="active-user-sets-rows">
+                    <!-- Dynamically populated sets rows -->
+                  </div>
+                </div>
+              </div>
+            </div>
+
+            <div class="set-save-actions margin-top-md">
+              <button class="btn btn-accent btn-lg btn-full" id="save-exercise-sets-btn">Save Exercise Performance</button>
+            </div>
+          </div>
+        </div>
+      </div>
+
+      <!-- SECTION C: GUIDED STRETCHING -->
+      <div id="phase-stretching" class="workout-phase-container hidden">
+        <div class="phase-header">
+          <h2>Phase 3: Guided Stretching (10 Minutes)</h2>
+          <p class="text-secondary">Release tension and lock in recovery for the specific muscles trained today.</p>
+        </div>
+
+        <div class="stretching-grid margin-top-md">
+          <div class="stretch-visual-card glass-panel">
+            <h2 id="stretch-name">Chest Wall Stretch</h2>
+            <p class="muscle-badge" id="stretch-muscle">Chest</p>
+            
+            <div class="stretch-media-placeholder margin-top-sm" id="stretch-media-container">
+              <!-- PNG image gets injected here -->
+            </div>
+
+            <p id="stretch-description" class="text-secondary margin-top-sm">...</p>
+            
+            <div id="stretch-side-display" class="side-alert margin-top-sm" style="display:none;">
+              <strong>Side:</strong> <span id="stretch-side-text">Left side</span>
+            </div>
+
+            <div class="stretch-actions margin-top-md">
+              <button class="btn btn-secondary" id="skip-stretching-btn">Skip Stretching</button>
+              <button class="btn btn-primary" id="next-stretch-btn">Next Stretch &rarr;</button>
+            </div>
+          </div>
+
+          <div class="stretch-timer-card glass-panel">
+            <div class="giant-timer" id="stretch-timer-clock">00:45</div>
+            <div class="rest-timer-controls">
+              <button class="btn btn-secondary" id="stretch-pause-btn">Pause</button>
+              <button class="btn btn-accent" id="stretch-start-btn" style="display:none;">Resume</button>
+            </div>
+            <div class="progress-bar-container margin-top-md">
+              <div class="progress-bar-fill" id="stretch-progress-bar" style="width: 100%"></div>
+            </div>
+            <div class="stretches-list-preview margin-top-md" id="stretches-list-preview">
+              <!-- Inline stretches list -->
+            </div>
+          </div>
+        </div>
+      </div>
+
+      <!-- SECTION D: WORKOUT SUMMARY SPLASH -->
+      <div id="phase-summary" class="workout-phase-container hidden">
+        <div class="summary-splash glass-panel text-center">
+          <div class="celebration-icon">🏆</div>
+          <h1>Session Complete!</h1>
+          <p class="text-secondary">Amazing job! You completed all scheduled routines for today.</p>
+          
+          <div class="summary-stats-grid margin-top-md">
+            <div class="stat-box glass-panel">
+              <h3>Workout Duration</h3>
+              <p class="stat-val" id="summary-duration">2h 40m</p>
+            </div>
+            <div class="stat-box glass-panel">
+              <h3>Total Working Sets</h3>
+              <p class="stat-val" id="summary-total-sets">24 sets</p>
+            </div>
+            <div class="stat-box glass-panel">
+              <h3>Me Volume</h3>
+              <p class="stat-val" id="summary-u1-volume">1,250 kg</p>
+            </div>
+            <div class="stat-box glass-panel">
+              <h3>Partner Volume</h3>
+              <p class="stat-val" id="summary-u2-volume">850 kg</p>
+            </div>
+          </div>
+
+          <!-- Session Difficulty Feedback -->
+          <div class="session-feedback-box margin-top-md text-left">
+            <h3>How hard was today's session?</h3>
+            <div class="form-grid margin-top-sm">
+              <div class="form-control">
+                <label id="lbl-difficulty-u1">My Rating (1-5)</label>
+                <select id="session-diff-u1" class="input-select">
+                  <option value="1">1 - Very Easy</option>
+                  <option value="2">2 - Easy</option>
+                  <option value="3" selected>3 - Moderate</option>
+                  <option value="4">4 - Hard</option>
+                  <option value="5">5 - Intense</option>
+                </select>
+              </div>
+              <div class="form-control">
+                <label id="lbl-difficulty-u2">Partner Rating (1-5)</label>
+                <select id="session-diff-u2" class="input-select">
+                  <option value="1">1 - Very Easy</option>
+                  <option value="2">2 - Easy</option>
+                  <option value="3" selected>3 - Moderate</option>
+                  <option value="4">4 - Hard</option>
+                  <option value="5">5 - Intense</option>
+                </select>
+              </div>
+            </div>
+            
+            <div class="form-control margin-top-sm">
+              <label>General Session Notes</label>
+              <textarea id="session-summary-notes" class="input-textarea" placeholder="Add any details about energy levels, barbell speed, or gym layout..."></textarea>
+            </div>
+          </div>
+
+          <div class="margin-top-md">
+            <button class="btn btn-accent btn-lg btn-full" id="save-session-btn">Save Session & Exit</button>
+          </div>
+        </div>
+      </div>
+    </section>
+
+    <!-- 5. PROGRAM SCREEN / EDITOR -->
+    <section id="program-view" class="view-container hidden">
+      <div class="dashboard-header flex-header">
+        <div>
+          <h1 class="view-title">Workout Program Template</h1>
+          <p class="text-secondary">View or customize the exercises, set counts, rep targets, and groupings.</p>
+        </div>
+        <div class="header-actions">
+          <button id="reset-program-btn" class="btn btn-secondary">Restore Base Program</button>
+          <button id="save-program-changes-btn" class="btn btn-accent">Save All Changes</button>
+        </div>
+      </div>
+
+      <div class="program-editor-tabs margin-top-md">
+        <button class="tab-btn active" data-day-id="day_1">Day 1: Front Frame</button>
+        <button class="tab-btn" data-day-id="day_2">Day 2: Monster Back</button>
+        <button class="tab-btn" data-day-id="day_3">Day 3: Foundation</button>
+      </div>
+
+      <div class="program-day-editor glass-panel margin-top-sm">
+        <div class="day-overview-header">
+          <h2 id="editor-day-title">Day 1 — Build the Front Frame</h2>
+          <div class="form-control margin-top-sm">
+            <label>Muscles Trained Focus</label>
+            <input type="text" id="editor-day-focus" class="input-text">
+          </div>
+        </div>
+
+        <div class="exercises-edit-list margin-top-md" id="editor-exercises-list">
+          <!-- Exercised details populate here -->
+        </div>
+
+        <button class="btn btn-primary margin-top-md" id="add-exercise-btn">+ Add New Exercise</button>
+      </div>
+
+      <!-- Change log records -->
+      <div class="changelog-panel glass-panel margin-top-md">
+        <h3>Program Change Log</h3>
+        <ul id="changelog-list" class="changelog-list">
+          <li class="text-secondary">No edits recorded yet.</li>
+        </ul>
+      </div>
+    </section>
+
+    <!-- 6. PROGRESS REPORT VIEW -->
+    <section id="progress-view" class="view-container hidden">
+      <div class="dashboard-header">
+        <h1 class="view-title">Progress & Analytics</h1>
+        <p class="text-secondary">Analyze training logs, cardiovascular treadmill distances, and body metric tracks.</p>
+      </div>
+
+      <!-- Stats Grid -->
+      <div class="stats-overview-grid margin-top-md" id="progress-stats-container">
+        <!-- populated with details -->
+      </div>
+
+      <!-- Chart Sections -->
+      <div class="charts-grid margin-top-md">
+        <div class="chart-card glass-panel">
+          <h3>Total Training Volume per Session</h3>
+          <p class="text-secondary">Accumulated load (weight × reps × completed sets)</p>
+          <div class="mock-chart-container" id="chart-volume">
+            <!-- Custom HTML / CSS graphs -->
+          </div>
+        </div>
+
+        <div class="chart-card glass-panel">
+          <h3>Treadmill Running Distance (km)</h3>
+          <p class="text-secondary">Accumulated cardiorespiratory work</p>
+          <div class="mock-chart-container" id="chart-treadmill">
+            <!-- Custom HTML / CSS graphs -->
+          </div>
+        </div>
+      </div>
+
+      <!-- Personal Records (PR) Panel -->
+      <div class="pr-card glass-panel margin-top-md">
+        <h3>Estimated Personal Records (Max Weights lifted)</h3>
+        <div class="pr-grid" id="pr-list-container">
+          <!-- Dynamically populated list of maximum weights per exercise -->
+        </div>
+      </div>
+
+      <!-- Body Measurements Tracker -->
+      <div class="measurements-section glass-panel margin-top-md">
+        <div class="flex-header">
+          <h3>Body Measurements History</h3>
+          <button id="add-measurements-btn" class="btn btn-primary btn-sm">+ Log New Stats</button>
+        </div>
+
+        <div class="measurements-history-table margin-top-sm">
+          <table class="table-full" id="measurements-table">
+            <thead>
+              <tr>
+                <th>Date</th>
+                <th>Weight (kg)</th>
+                <th>Chest (cm)</th>
+                <th>Waist (cm)</th>
+                <th>Hips (cm)</th>
+                <th>Arms (cm)</th>
+                <th>Legs (cm)</th>
+                <th>Notes</th>
+              </tr>
+            </thead>
+            <tbody id="measurements-table-body">
+              <!-- dynamic rows -->
+            </tbody>
+          </table>
+        </div>
+      </div>
+
+      <!-- Log Measurements Modal Overlay -->
+      <div id="measurements-overlay" class="modal-overlay hidden">
+        <div class="modal-card glass-panel">
+          <h2>Log Body Measurements</h2>
+          <form id="measurements-form" class="form-group margin-top-md">
+            <div class="form-grid">
+              <div class="form-control">
+                <label>Weight (kg)*</label>
+                <input type="number" step="0.1" id="meas-weight" required>
+              </div>
+              <div class="form-control">
+                <label>Chest (cm)</label>
+                <input type="number" step="0.1" id="meas-chest">
+              </div>
+              <div class="form-control">
+                <label>Waist (cm)</label>
+                <input type="number" step="0.1" id="meas-waist">
+              </div>
+              <div class="form-control">
+                <label>Hips (cm)</label>
+                <input type="number" step="0.1" id="meas-hips">
+              </div>
+              <div class="form-control">
+                <label>Arms (cm)</label>
+                <input type="number" step="0.1" id="meas-arms">
+              </div>
+              <div class="form-control">
+                <label>Legs (cm)</label>
+                <input type="number" step="0.1" id="meas-legs">
+              </div>
+            </div>
+            <div class="form-control margin-top-sm">
+              <label>Optional Notes</label>
+              <input type="text" id="meas-notes" placeholder="Woke up fasting, hydrated...">
+            </div>
+            <div class="modal-actions margin-top-md">
+              <button type="button" id="cancel-measure-btn" class="btn btn-secondary">Cancel</button>
+              <button type="submit" class="btn btn-accent">Save Stats</button>
+            </div>
+          </form>
+        </div>
+      </div>
+    </section>
+
+    <!-- 7. CONFIG & SETTINGS SCREEN -->
+    <section id="settings-view" class="view-container hidden">
+      <div class="dashboard-header">
+        <h1 class="view-title">App Configuration & Settings</h1>
+        <p class="text-secondary">Customize default workout settings, backup database files, and configure profiles.</p>
+      </div>
+
+      <div class="settings-grid margin-top-md">
+        <div class="settings-card glass-panel">
+          <h3>User Settings Profile</h3>
+          <form id="profile-settings-form" class="form-group margin-top-sm">
+            <div class="form-control">
+              <label>Display Nickname</label>
+              <input type="text" id="settings-display-name" required>
+            </div>
+            <div class="form-control">
+              <label>Weight Unit preference</label>
+              <select id="settings-weight-unit" class="input-select">
+                <option value="kg">Kilograms (kg)</option>
+                <option value="lbs">Pounds (lbs)</option>
+              </select>
+            </div>
+            <div class="form-control">
+              <label>Target Heart Rate (Warm-up Target)</label>
+              <input type="number" id="settings-target-hr" placeholder="e.g. 130">
+            </div>
+            <div class="form-control">
+              <label>Default Rest Duration (seconds)</label>
+              <input type="number" id="settings-default-rest" placeholder="e.g. 90">
+            </div>
+            <button type="submit" class="btn btn-accent margin-top-sm">Save Profile Settings</button>
+          </form>
+        </div>
+
+        <div class="settings-card glass-panel">
+          <h3>Database Backup & Export</h3>
+          <p class="text-secondary">Export the entire session history and program templates to standard JSON or import from file.</p>
+          
+          <div class="backup-actions-box margin-top-md">
+            <button id="backup-export-btn" class="btn btn-primary btn-full">
+              <svg width="18" height="18" viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="2"><path d="M21 15v4a2 2 0 0 1-2 2H5a2 2 0 0 1-2-2v-4"/><polyline points="7 10 12 15 17 10"/><line x1="12" y1="15" x2="12" y2="3"/></svg>
+              Export JSON Database
+            </button>
+            
+            <div class="import-container margin-top-sm">
+              <label for="backup-import-file" class="btn btn-secondary btn-full cursor-pointer text-center">
+                <svg width="18" height="18" viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="2"><path d="M21 15v4a2 2 0 0 1-2 2H5a2 2 0 0 1-2-2v-4"/><polyline points="17 8 12 3 7 8"/><line x1="12" y1="3" x2="12" y2="15"/></svg>
+                Select Backup File to Import
+              </label>
+              <input type="file" id="backup-import-file" class="hidden-input" accept=".json">
+            </div>
+          </div>
+
+          <div id="settings-alert-box" class="alert alert-info hidden margin-top-sm"></div>
+        </div>
+      </div>
+    </section>
+
+  </main>
+
+  <footer class="footer">
+    <p class="text-secondary">&copy; 2026 UsFit. Developed with care for couples training.</p>
+  </footer>
+
+  <script src="app.js"></script>
+</body>
+</html>
