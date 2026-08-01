@@ -108,6 +108,9 @@ function playBeep(freq = 800, duration = 0.3) {
 // Startup Initialization
 document.addEventListener('DOMContentLoaded', async () => {
   setupEventListeners();
+  if ('serviceWorker' in navigator) {
+    navigator.serviceWorker.register('/sw.js').catch(err => console.warn('Service Worker registration:', err));
+  }
   await checkSession();
 });
 
