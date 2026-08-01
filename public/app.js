@@ -293,6 +293,28 @@ function setupEventListeners() {
   document.getElementById('reset-program-btn').addEventListener('click', resetProgramDefaults);
   document.getElementById('save-program-changes-btn').addEventListener('click', saveProgramChanges);
   document.getElementById('add-exercise-btn').addEventListener('click', addNewExerciseTemplate);
+
+  // Notification & Reminders Action Listeners
+  const enableNotifBtn = document.getElementById('enable-notif-btn');
+  if (enableNotifBtn) {
+    enableNotifBtn.addEventListener('click', requestNotificationPermission);
+  }
+  const testNotifBtn = document.getElementById('test-notif-btn');
+  if (testNotifBtn) {
+    testNotifBtn.addEventListener('click', () => {
+      if (!('Notification' in window)) {
+        alert('Browser notifications are not supported by this browser.');
+        return;
+      }
+      if (Notification.permission !== 'granted') {
+        alert('Please enable browser notifications first using the button above!');
+        return;
+      }
+      sendBrowserNotification('UsFit Test Reminder 🏋️', {
+        body: 'Test successful! Your browser notifications are active and ready.'
+      });
+    });
+  }
 }
 
 // Authentication Logic
@@ -460,6 +482,182 @@ function loadSettings() {
     document.getElementById('settings-target-hr').value = state.user.targetHeartRate || 130;
     document.getElementById('settings-default-rest').value = state.user.defaultRestTime || 90;
   }
+  initNotificationUI();
+}
+
+// Notification & Reminders Helper Functions
+function initNotificationUI() {
+  const badge = document.getElementById('notif-permission-badge');
+  const hint = document.getElementById('notif-permission-hint');
+  const enableBtn = document.getElementById('enable-notif-btn');
+
+  if (!('Notification' in window)) {
+    if (badge) {
+      badge.textContent = 'Not Supported';
+      badge.className = 'badge badge-danger';
+    }
+    if (hint) hint.textContent = 'This browser does not support desktop notifications.';
+    if (enableBtn) enableBtn.disabled = true;
+    return;
+  }
+
+  if (Notification.permission === 'granted') {
+    if (badge) {
+      badge.textContent = 'Granted';
+      badge.className = 'badge badge-success';
+    }
+    if (hint) hint.textContent = 'Browser notifications are enabled. You will receive workout reminders.';
+    if (enableBtn) {
+      enableBtn.textContent = 'Notifications Enabled ✓';
+      enableBtn.disabled = true;
+    }
+  } else if (Notification.permission === 'denied') {
+    if (badge) {
+      badge.textContent = 'Denied';
+      badge.className = 'badge badge-danger';
+    }
+    if (hint) hint.textContent = 'Notifications are blocked in your browser settings.';
+    if (enableBtn) enableBtn.disabled = false;
+  } else {
+    if (badge) {
+      badge.textContent = 'Not Enabled';
+      badge.className = 'badge badge-warning';
+    }
+    if (hint) hint.textContent = 'Enable notifications to receive daily training alerts.';
+    if (enableBtn) enableBtn.disabled = false;
+  }
+}
+
+async function requestNotificationPermission() {
+  if (!('Notification' in window)) {
+    alert('Browser notifications are not supported by your browser.');
+    return;
+  }
+  
+  try {
+    const permission = await Notification.requestPermission();
+    initNotificationUI();
+    if (permission === 'granted') {
+      sendBrowserNotification('UsFit Reminders Enabled 🏋️', {
+        body: 'Awesome! You will now receive alerts for scheduled workout sessions.'
+      });
+    }
+  } catch (e) {
+    console.error('Error requesting notification permission:', e);
+  }
+}
+
+function sendBrowserNotification(title, options = {}) {
+  if (!('Notification' in window) || Notification.permission !== 'granted') return;
+
+  const defaultOptions = {
+    icon: 'https://cdn-icons-png.flaticon.com/512/2964/2964514.png',
+    badge: 'https://cdn-icons-png.flaticon.com/512/2964/2964514.png',
+    tag: 'usfit-reminder'
+  };
+
+  try {
+    const notification = new Notification(title, { ...defaultOptions, ...options });
+    notification.onclick = () => {
+      window.focus();
+      notification.close();
+    };
+  } catch (e) {
+    console.warn('Native notification failed:', e);
+  }
+}
+
+function checkAndTriggerDailyReminder() {
+  if (!state.schedule || !state.schedule.currentWeek) return;
+
+  const daysMap = { 0: 'Sunday', 1: 'Monday', 2: 'Tuesday', 3: 'Wednesday', 4: 'Thursday', 5: 'Friday', 6: 'Saturday' };
+  const todayDate = new Date();
+  const todayName = daysMap[todayDate.getDay()];
+  const dateStr = todayDate.toISOString().split('T')[0];
+
+  const week = state.schedule.currentWeek;
+  if (!week.days || !week.days[todayName]) return;
+
+  const dayInfo = week.days[todayName];
+  if (dayInfo.status === 'Upcoming' || dayInfo.status === 'Planned') {
+    const lastNotifDate = localStorage.getItem('usfit_last_notif_date');
+    if (lastNotifDate !== dateStr) {
+      localStorage.setItem('usfit_last_notif_date', dateStr);
+      const workoutObj = state.program.days.find(d => d.id === dayInfo.workoutId);
+      const workoutName = workoutObj ? workoutObj.name : 'Workout Session';
+      
+      sendBrowserNotification(`UsFit Workout Day Alert 🏋️‍♂️`, {
+        body: `Today is ${todayName}! Scheduled routine: ${workoutName}. Tap to start training together!`
+      });
+    }
+  }
+}
+
+function renderDashboardReminders() {
+  const banner = document.getElementById('dashboard-reminder-banner');
+  if (!banner) return;
+
+  if (!state.schedule || !state.schedule.currentWeek) {
+    banner.classList.add('hidden');
+    return;
+  }
+
+  const daysMap = { 0: 'Sunday', 1: 'Monday', 2: 'Tuesday', 3: 'Wednesday', 4: 'Thursday', 5: 'Friday', 6: 'Saturday' };
+  const todayName = daysMap[new Date().getDay()];
+  const week = state.schedule.currentWeek;
+  const isWorkoutDay = week.days && week.days[todayName];
+
+  if (isWorkoutDay) {
+    const dayInfo = week.days[todayName];
+    const workoutObj = state.program.days.find(d => d.id === dayInfo.workoutId);
+    const workoutName = workoutObj ? workoutObj.name : 'Scheduled Workout';
+
+    if (dayInfo.status === 'Completed') {
+      banner.className = 'reminder-banner completed-day glass-panel margin-top-sm';
+      banner.innerHTML = `
+        <div class="reminder-content">
+          <div class="reminder-info">
+            <span class="reminder-icon">🏆</span>
+            <div>
+              <div class="reminder-title">Today's Workout Completed!</div>
+              <div class="reminder-subtitle">Great job crushing <strong>${escapeHTML(workoutName)}</strong> today!</div>
+            </div>
+          </div>
+          <span class="badge badge-success">Completed ✓</span>
+        </div>
+      `;
+    } else {
+      banner.className = 'reminder-banner workout-day glass-panel margin-top-sm';
+      banner.innerHTML = `
+        <div class="reminder-content">
+          <div class="reminder-info">
+            <span class="reminder-icon">⚡</span>
+            <div>
+              <div class="reminder-title">Today is a Workout Day! (${escapeHTML(todayName)})</div>
+              <div class="reminder-subtitle">Scheduled Routine: <strong>${escapeHTML(workoutName)}</strong>. Ready to train?</div>
+            </div>
+          </div>
+          <button class="btn btn-accent btn-sm" onclick="openReadinessModal('${todayName}', '${dayInfo.workoutId}')">Start Warm-Up</button>
+        </div>
+      `;
+    }
+    banner.classList.remove('hidden');
+  } else {
+    banner.className = 'reminder-banner recovery-day glass-panel margin-top-sm';
+    banner.innerHTML = `
+      <div class="reminder-content">
+        <div class="reminder-info">
+          <span class="reminder-icon">🌿</span>
+          <div>
+            <div class="reminder-title">Today is a Recovery & Rest Day</div>
+            <div class="reminder-subtitle">No active sessions scheduled for ${escapeHTML(todayName)}. Hydrate, stretch, and get quality sleep!</div>
+          </div>
+        </div>
+        <span class="badge badge-success">Active Recovery</span>
+      </div>
+    `;
+    banner.classList.remove('hidden');
+  }
 }
 
 // Dashboard rendering
@@ -467,6 +665,10 @@ function loadDashboard() {
   // Update Date
   const options = { weekday: 'long', year: 'numeric', month: 'long', day: 'numeric' };
   document.getElementById('dashboard-date-str').textContent = new Date().toLocaleDateString(undefined, options);
+
+  // Render reminders banner and trigger notification check
+  renderDashboardReminders();
+  checkAndTriggerDailyReminder();
 
   // Render weekly consistency card
   const progressTitle = document.getElementById('progress-weeks-title');
@@ -1787,6 +1989,12 @@ async function saveWeeklyPlan(e) {
     });
     
     const data = await res.json();
+    if (res.status === 401) {
+      alert('Your session has expired. Please log back in to lock your schedule.');
+      state.user = null;
+      navigate('login');
+      return;
+    }
     if (!res.ok) throw new Error(data.error);
 
     state.schedule = data.schedule;

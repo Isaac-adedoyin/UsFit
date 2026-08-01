@@ -8,7 +8,10 @@ const db = require('./db');
 
 const app = express();
 const PORT = process.env.PORT || 3000;
-const sessionSecret = process.env.SESSION_SECRET || crypto.randomBytes(32).toString('hex');
+const sessionSecret = process.env.SESSION_SECRET || 'usfit-couples-session-secret-key-2026';
+
+// Trust proxy for secure cookies on Vercel deployment
+app.set('trust proxy', 1);
 
 // This is a private two-person app. Gender is tied to the approved account,
 // rather than accepted from a browser request where it could be changed.
