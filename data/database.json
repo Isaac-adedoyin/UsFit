@@ -1,5 +1,28 @@
 {
-  "users": {},
+  "users": {
+    "ibright053@gmail.com": {
+      "id": "usr_isaac",
+      "email": "ibright053@gmail.com",
+      "passwordHash": "",
+      "displayName": "Isaac",
+      "gender": "male",
+      "targetHeartRate": 130,
+      "unit": "kg",
+      "defaultRestTime": 90,
+      "createdAt": "2026-08-01T00:00:00.000Z"
+    },
+    "okonmary1502@gmail.com": {
+      "id": "usr_mary",
+      "email": "okonmary1502@gmail.com",
+      "passwordHash": "",
+      "displayName": "Mary",
+      "gender": "female",
+      "targetHeartRate": 130,
+      "unit": "kg",
+      "defaultRestTime": 90,
+      "createdAt": "2026-08-01T00:00:00.000Z"
+    }
+  },
   "program_male": {
     "days": [
       {
