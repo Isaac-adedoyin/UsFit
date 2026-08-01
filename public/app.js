@@ -673,24 +673,48 @@ function checkSessionUnlockStatus(scheduledDay) {
   const daysMap = { 0: 'Sunday', 1: 'Monday', 2: 'Tuesday', 3: 'Wednesday', 4: 'Thursday', 5: 'Friday', 6: 'Saturday' };
   const todayName = daysMap[new Date().getDay()];
 
+  if (!state.schedule || !state.schedule.currentWeek) {
+    return { isUnlocked: false, reason: 'No active schedule' };
+  }
+
+  const days = state.schedule.currentWeek.days;
+
   // Active workout in progress is always unlocked
-  if (state.activeWorkout && state.schedule && state.schedule.currentWeek) {
-    const dayObj = state.schedule.currentWeek.days[scheduledDay];
+  if (state.activeWorkout) {
+    const dayObj = days[scheduledDay];
     if (dayObj && state.activeWorkout.workoutId === dayObj.workoutId) {
       return { isUnlocked: true, reason: 'In progress' };
     }
   }
 
-  // Today IS the scheduled day
+  const dayIndexMap = { "Sunday": 0, "Monday": 1, "Tuesday": 2, "Wednesday": 3, "Thursday": 4, "Friday": 5, "Saturday": 6 };
+  const dayNames = Object.keys(days);
+  const sortedDays = dayNames.sort((a, b) => dayIndexMap[a] - dayIndexMap[b]);
+  const currentDayIdx = sortedDays.indexOf(scheduledDay);
+
+  // Check 1: Enforce completion of previous scheduled session
+  if (currentDayIdx > 0) {
+    const prevDay = sortedDays[currentDayIdx - 1];
+    const prevDayInfo = days[prevDay];
+    if (prevDayInfo && prevDayInfo.status !== 'Completed') {
+      return { isUnlocked: false, reason: `Complete ${prevDay}'s session first` };
+    }
+  }
+
+  // Check 2: Today IS the exact scheduled day
   if (todayName === scheduledDay) {
     return { isUnlocked: true, reason: 'Today is scheduled day' };
   }
 
-  const dayIndex = { "Sunday": 0, "Monday": 1, "Tuesday": 2, "Wednesday": 3, "Thursday": 4, "Friday": 5, "Saturday": 6 };
-  const todayIdx = dayIndex[todayName];
-  const scheduledIdx = dayIndex[scheduledDay];
+  const todayIdx = dayIndexMap[todayName];
+  const scheduledIdx = dayIndexMap[scheduledDay];
 
-  // If today is past the scheduled day in the week (catch-up on past session)
+  // Saturday (6) is BEFORE Sunday (0) of the upcoming week
+  if (todayName === 'Saturday' && scheduledDay === 'Sunday') {
+    return { isUnlocked: false, reason: 'Unlocks on Sunday' };
+  }
+
+  // If today is past the scheduled day in the week (catch-up)
   if (todayIdx > scheduledIdx) {
     return { isUnlocked: true, reason: 'Catch-up session' };
   }
@@ -778,7 +802,7 @@ function loadDashboard() {
     if (state.activeWorkout && state.activeWorkout.workoutId === activeInfo.workoutId) {
       btnText = "Resume Gym Session";
     } else if (!unlockStatus.isUnlocked) {
-      btnText = `🔒 Locked — Unlocks on ${upcomingDay}`;
+      btnText = `🔒 Locked — ${unlockStatus.reason}`;
     }
 
     document.getElementById('today-workout-panel').innerHTML = `
@@ -786,12 +810,12 @@ function loadDashboard() {
         <div class="workout-info-block">
           <div class="tag-group">
             <span class="tag tag-accent">${escapeHTML(upcomingDay)}</span>
-            <span class="tag ${unlockStatus.isUnlocked ? '' : 'tag-warning'}">${unlockStatus.isUnlocked ? escapeHTML(activeInfo.status) : 'Locked Until ' + escapeHTML(upcomingDay)}</span>
+            <span class="tag ${unlockStatus.isUnlocked ? '' : 'tag-warning'}">${unlockStatus.isUnlocked ? escapeHTML(activeInfo.status) : 'Locked'}</span>
           </div>
           <h3 class="margin-top-xs">${escapeHTML(workoutObj.name)}</h3>
           <p class="text-secondary font-sm"><strong>Focus:</strong> ${escapeHTML(workoutObj.focus)}</p>
           <p class="text-secondary font-sm"><strong>Est. Duration:</strong> 2h 40m | Exercises: ${workoutObj.exercises.length}</p>
-          ${!unlockStatus.isUnlocked ? `<p class="font-xs margin-top-xs" style="color: #f59e0b;">⏳ Scheduled for <strong>${escapeHTML(upcomingDay)}</strong>. This session will automatically unlock on ${escapeHTML(upcomingDay)}!</p>` : ''}
+          ${!unlockStatus.isUnlocked ? `<p class="font-xs margin-top-xs" style="color: #f59e0b;">⏳ <strong>Session Locked:</strong> ${escapeHTML(unlockStatus.reason)}.</p>` : ''}
         </div>
         <div>
           <button id="dashboard-start-workout-btn" class="${unlockStatus.isUnlocked ? 'btn btn-accent btn-lg' : 'btn btn-secondary btn-lg'}" ${unlockStatus.isUnlocked ? '' : 'disabled style="opacity: 0.6; cursor: not-allowed;"'}>${btnText}</button>
