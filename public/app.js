@@ -1993,15 +1993,23 @@ async function saveWeeklyPlan(e) {
       headers: { 'Content-Type': 'application/json' },
       body: JSON.stringify({ weekId, daysMapping })
     });
-    
-    const data = await res.json();
+
     if (res.status === 401) {
       alert('Your session has expired. Please log back in to lock your schedule.');
       state.user = null;
       navigate('login');
       return;
     }
-    if (!res.ok) throw new Error(data.error);
+
+    const contentType = res.headers.get('content-type');
+    let data;
+    if (contentType && contentType.includes('application/json')) {
+      data = await res.json();
+    } else {
+      throw new Error(`Server status ${res.status}: Unable to process request. Please try again.`);
+    }
+
+    if (!res.ok) throw new Error(data.error || 'Failed to lock schedule.');
 
     state.schedule = data.schedule;
     alert('Week schedule locked successfully!');

@@ -1,20 +1,39 @@
 const fs = require('fs');
 const path = require('path');
 
+const os = require('os');
+
 const DB_DIR = path.join(__dirname, 'data');
 const DB_FILE = path.join(DB_DIR, 'database.json');
 
 let memoryDb = null;
 
+function getWritableDbFile() {
+  try {
+    if (fs.existsSync(DB_DIR)) {
+      fs.accessSync(DB_DIR, fs.constants.W_OK);
+      return DB_FILE;
+    }
+  } catch (_) {}
+  const tmpDir = os.tmpdir();
+  return path.join(tmpDir, 'usfit_database.json');
+}
+
 // Helper to ensure the directory and file exist
 function initDb() {
-  if (!fs.existsSync(DB_DIR)) {
-    fs.mkdirSync(DB_DIR, { recursive: true });
-  }
-
-  if (!fs.existsSync(DB_FILE)) {
-    const seedData = getDefaultSeedData();
-    writeAtomic(seedData);
+  const targetFile = getWritableDbFile();
+  const dir = path.dirname(targetFile);
+  
+  try {
+    if (!fs.existsSync(dir)) {
+      fs.mkdirSync(dir, { recursive: true });
+    }
+    if (!fs.existsSync(targetFile)) {
+      const seedData = getDefaultSeedData();
+      writeAtomic(seedData);
+    }
+  } catch (err) {
+    console.warn('Unable to initialize disk storage, using in-memory database:', err.message);
   }
 }
 
@@ -37,18 +56,22 @@ function readDb() {
     }
   }
 
-  initDb();
-  try {
-    const raw = fs.readFileSync(DB_FILE, 'utf8');
-    memoryDb = JSON.parse(raw);
-    return memoryDb;
-  } catch (err) {
-    console.error('Error reading database file, resetting to seed data:', err);
-    const seed = getDefaultSeedData();
-    writeAtomic(seed);
-    memoryDb = seed;
-    return seed;
+  const targetFile = getWritableDbFile();
+  const fileToRead = fs.existsSync(targetFile) ? targetFile : (fs.existsSync(DB_FILE) ? DB_FILE : null);
+
+  if (fileToRead) {
+    try {
+      const raw = fs.readFileSync(fileToRead, 'utf8');
+      memoryDb = JSON.parse(raw);
+      return memoryDb;
+    } catch (err) {
+      console.error('Error reading database file, using seed data:', err);
+    }
   }
+
+  const seed = getDefaultSeedData();
+  memoryDb = seed;
+  return seed;
 }
 
 function writeAtomic(data) {
@@ -64,18 +87,18 @@ function writeAtomic(data) {
       },
       body: JSON.stringify(data)
     }).catch(err => console.error('Failed to write to KV:', err));
-  } else {
-    const tmpFile = DB_FILE + '.tmp';
-    try {
-      fs.writeFileSync(tmpFile, JSON.stringify(data, null, 2), 'utf8');
-      fs.renameSync(tmpFile, DB_FILE);
-    } catch (err) {
-      console.error('Error writing database atomically:', err);
-      if (fs.existsSync(tmpFile)) {
-        try { fs.unlinkSync(tmpFile); } catch (_) {}
-      }
-      throw err;
-    }
+    return;
+  }
+
+  const targetFile = getWritableDbFile();
+  const tmpFile = targetFile + '.tmp';
+  try {
+    const dir = path.dirname(targetFile);
+    if (!fs.existsSync(dir)) fs.mkdirSync(dir, { recursive: true });
+    fs.writeFileSync(tmpFile, JSON.stringify(data, null, 2), 'utf8');
+    fs.renameSync(tmpFile, targetFile);
+  } catch (err) {
+    console.warn('Warning: Failed to persist database to disk (retained in memory):', err.message);
   }
 }
 
