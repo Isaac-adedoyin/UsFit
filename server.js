@@ -61,7 +61,7 @@ function scheduleStatusForUsers(userStatuses) {
 function normalizeSchedule(schedule) {
   if (!schedule.currentWeek) return schedule;
   const userIds = Object.values(db.read().users).map(user => user.id);
-  const dayOrder = { Monday: 0, Tuesday: 1, Wednesday: 2, Thursday: 3, Friday: 4, Saturday: 5, Sunday: 6 };
+  const dayOrder = { Sunday: 0, Monday: 1, Tuesday: 2, Wednesday: 3, Thursday: 4, Friday: 5, Saturday: 6 };
   const orderedDays = Object.entries(schedule.currentWeek.days || {}).sort(([a], [b]) => dayOrder[a] - dayOrder[b]);
   orderedDays.forEach(([, day], index) => {
     if (!day.userStatuses) {
@@ -316,8 +316,8 @@ app.post('/api/schedule/setup', requireAuth, (req, res) => {
   // Spacing warning calculation
   // Days of the week mapping to indexes to calculate distance
   const dayIndex = {
-    "Monday": 0, "Tuesday": 1, "Wednesday": 2, "Thursday": 3,
-    "Friday": 4, "Saturday": 5, "Sunday": 6
+    "Sunday": 0, "Monday": 1, "Tuesday": 2, "Wednesday": 3,
+    "Thursday": 4, "Friday": 5, "Saturday": 6
   };
 
   const sortedDays = daysList.sort((a, b) => dayIndex[a] - dayIndex[b]);
@@ -640,8 +640,8 @@ app.post('/api/workout/complete', requireAuth, (req, res) => {
       // Auto-unlock next day as 'Upcoming' if it exists and is currently 'Planned'
       const daysOfCurrentWeek = Object.keys(schedule.currentWeek.days);
       const dayIndex = {
-        "Monday": 0, "Tuesday": 1, "Wednesday": 2, "Thursday": 3,
-        "Friday": 4, "Saturday": 5, "Sunday": 6
+        "Sunday": 0, "Monday": 1, "Tuesday": 2, "Wednesday": 3,
+        "Thursday": 4, "Friday": 5, "Saturday": 6
       };
       const sortedDays = daysOfCurrentWeek.sort((a, b) => dayIndex[a] - dayIndex[b]);
       const currentIdx = sortedDays.indexOf(scheduledDayName);

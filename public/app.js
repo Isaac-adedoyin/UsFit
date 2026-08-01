@@ -712,7 +712,7 @@ function loadDashboard() {
 
   // Draw day tiles
   const dayNames = Object.keys(days);
-  const dayIndex = { "Monday": 0, "Tuesday": 1, "Wednesday": 2, "Thursday": 3, "Friday": 4, "Saturday": 5, "Sunday": 6 };
+  const dayIndex = { "Sunday": 0, "Monday": 1, "Tuesday": 2, "Wednesday": 3, "Thursday": 4, "Friday": 5, "Saturday": 6 };
   const sortedDays = dayNames.sort((a, b) => dayIndex[a] - dayIndex[b]);
 
   sortedDays.forEach(day => {
@@ -1872,7 +1872,7 @@ function checkPlannerSelections() {
   if (checked.length === 3) {
     saveBtn.disabled = false;
     
-    const dayIndex = { "Monday": 0, "Tuesday": 1, "Wednesday": 2, "Thursday": 3, "Friday": 4, "Saturday": 5, "Sunday": 6 };
+    const dayIndex = { "Sunday": 0, "Monday": 1, "Tuesday": 2, "Wednesday": 3, "Thursday": 4, "Friday": 5, "Saturday": 6 };
     const sortedDays = checked.map(c => c.value).sort((a, b) => dayIndex[a] - dayIndex[b]);
 
     // Show program sequence layout mapping description
@@ -1961,7 +1961,7 @@ function loadPlanner() {
       fromSelect.innerHTML += `<option value="${day}">${day} (${workoutObj ? workoutObj.name.split(' — ')[0] : 'Workout'})</option>`;
     });
 
-    const allDays = ["Monday", "Tuesday", "Wednesday", "Thursday", "Friday", "Saturday", "Sunday"];
+    const allDays = ["Sunday", "Monday", "Tuesday", "Wednesday", "Thursday", "Friday", "Saturday"];
     allDays.forEach(day => {
       if (!days[day]) {
         toSelect.innerHTML += `<option value="${day}">${day}</option>`;
@@ -1979,7 +1979,7 @@ async function saveWeeklyPlan(e) {
   const checked = Array.from(checkboxes).filter(c => c.checked);
 
   // Chronologically order days
-  const dayIndex = { "Monday": 0, "Tuesday": 1, "Wednesday": 2, "Thursday": 3, "Friday": 4, "Saturday": 5, "Sunday": 6 };
+  const dayIndex = { "Sunday": 0, "Monday": 1, "Tuesday": 2, "Wednesday": 3, "Thursday": 4, "Friday": 5, "Saturday": 6 };
   const sortedDays = checked.map(c => c.value).sort((a, b) => dayIndex[a] - dayIndex[b]);
 
   const daysMapping = {};
