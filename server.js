@@ -177,6 +177,11 @@ app.post('/api/auth/login', (req, res) => {
   req.session.userId = user.id;
   req.session.email = user.email;
   req.session.displayName = user.displayName;
+  
+  const currentSched = db.getSchedule();
+  if (currentSched && currentSched.currentWeek) {
+    req.session.schedule = currentSched;
+  }
 
   res.json({
     message: 'Login successful',
@@ -194,12 +199,12 @@ app.post('/api/auth/login', (req, res) => {
 
 // Logout
 app.post('/api/auth/logout', (req, res) => {
-  req.session.destroy((err) => {
-    if (err) {
-      return res.status(500).json({ error: 'Could not log out.' });
-    }
-    res.json({ message: 'Logout successful' });
-  });
+  const activeSched = req.session ? req.session.schedule : null;
+  req.session = null;
+  if (activeSched && activeSched.currentWeek) {
+    req.session = { schedule: activeSched };
+  }
+  res.json({ message: 'Logout successful' });
 });
 
 // Current user details
@@ -290,8 +295,13 @@ app.post('/api/program/reset', requireAuth, (req, res) => {
 
 // Schedule endpoints
 app.get('/api/schedule', requireAuth, (req, res) => {
-  const schedule = normalizeSchedule(db.getSchedule());
-  db.saveSchedule(schedule);
+  let schedule = db.getSchedule();
+  if ((!schedule || !schedule.currentWeek) && req.session && req.session.schedule && req.session.schedule.currentWeek) {
+    schedule = req.session.schedule;
+    db.saveSchedule(schedule);
+  }
+  schedule = normalizeSchedule(schedule);
+  if (req.session) req.session.schedule = schedule;
   res.json(scheduleForUser(schedule, req.session.userId));
 });
 
@@ -363,6 +373,7 @@ app.post('/api/schedule/setup', requireAuth, (req, res) => {
   schedule.currentWeek.days[firstDay].status = 'Upcoming';
 
   db.saveSchedule(schedule);
+  if (req.session) req.session.schedule = schedule;
   res.json({ message: 'Week scheduled successfully', schedule: scheduleForUser(schedule, req.session.userId), warnings });
 });
 
@@ -399,6 +410,7 @@ app.post('/api/schedule/update-day', requireAuth, (req, res) => {
   }
 
   db.saveSchedule(normalizeSchedule(schedule));
+  if (req.session) req.session.schedule = schedule;
   res.json({ message: `Status updated for ${dayName} to ${status}`, schedule: scheduleForUser(schedule, req.session.userId) });
 });
 
