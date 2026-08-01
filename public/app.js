@@ -669,6 +669,36 @@ function renderDashboardReminders() {
   }
 }
 
+function checkSessionUnlockStatus(scheduledDay) {
+  const daysMap = { 0: 'Sunday', 1: 'Monday', 2: 'Tuesday', 3: 'Wednesday', 4: 'Thursday', 5: 'Friday', 6: 'Saturday' };
+  const todayName = daysMap[new Date().getDay()];
+
+  // Active workout in progress is always unlocked
+  if (state.activeWorkout && state.schedule && state.schedule.currentWeek) {
+    const dayObj = state.schedule.currentWeek.days[scheduledDay];
+    if (dayObj && state.activeWorkout.workoutId === dayObj.workoutId) {
+      return { isUnlocked: true, reason: 'In progress' };
+    }
+  }
+
+  // Today IS the scheduled day
+  if (todayName === scheduledDay) {
+    return { isUnlocked: true, reason: 'Today is scheduled day' };
+  }
+
+  const dayIndex = { "Sunday": 0, "Monday": 1, "Tuesday": 2, "Wednesday": 3, "Thursday": 4, "Friday": 5, "Saturday": 6 };
+  const todayIdx = dayIndex[todayName];
+  const scheduledIdx = dayIndex[scheduledDay];
+
+  // If today is past the scheduled day in the week (catch-up on past session)
+  if (todayIdx > scheduledIdx) {
+    return { isUnlocked: true, reason: 'Catch-up session' };
+  }
+
+  // Scheduled day is in the future
+  return { isUnlocked: false, reason: `Unlocks on ${scheduledDay}` };
+}
+
 // Dashboard rendering
 function loadDashboard() {
   // Update Date
@@ -742,10 +772,13 @@ function loadDashboard() {
   if (upcomingDay) {
     const activeInfo = days[upcomingDay];
     const workoutObj = state.program.days.find(d => d.id === activeInfo.workoutId);
+    const unlockStatus = checkSessionUnlockStatus(upcomingDay);
     
     let btnText = "Start Gym Session";
     if (state.activeWorkout && state.activeWorkout.workoutId === activeInfo.workoutId) {
       btnText = "Resume Gym Session";
+    } else if (!unlockStatus.isUnlocked) {
+      btnText = `🔒 Locked — Unlocks on ${upcomingDay}`;
     }
 
     document.getElementById('today-workout-panel').innerHTML = `
@@ -753,27 +786,28 @@ function loadDashboard() {
         <div class="workout-info-block">
           <div class="tag-group">
             <span class="tag tag-accent">${escapeHTML(upcomingDay)}</span>
-            <span class="tag">${escapeHTML(activeInfo.status)}</span>
+            <span class="tag ${unlockStatus.isUnlocked ? '' : 'tag-warning'}">${unlockStatus.isUnlocked ? escapeHTML(activeInfo.status) : 'Locked Until ' + escapeHTML(upcomingDay)}</span>
           </div>
           <h3 class="margin-top-xs">${escapeHTML(workoutObj.name)}</h3>
           <p class="text-secondary font-sm"><strong>Focus:</strong> ${escapeHTML(workoutObj.focus)}</p>
           <p class="text-secondary font-sm"><strong>Est. Duration:</strong> 2h 40m | Exercises: ${workoutObj.exercises.length}</p>
+          ${!unlockStatus.isUnlocked ? `<p class="font-xs margin-top-xs" style="color: #f59e0b;">⏳ Scheduled for <strong>${escapeHTML(upcomingDay)}</strong>. This session will automatically unlock on ${escapeHTML(upcomingDay)}!</p>` : ''}
         </div>
         <div>
-          <button id="dashboard-start-workout-btn" class="btn btn-accent btn-lg">${btnText}</button>
+          <button id="dashboard-start-workout-btn" class="${unlockStatus.isUnlocked ? 'btn btn-accent btn-lg' : 'btn btn-secondary btn-lg'}" ${unlockStatus.isUnlocked ? '' : 'disabled style="opacity: 0.6; cursor: not-allowed;"'}>${btnText}</button>
         </div>
       </div>
     `;
 
-    document.getElementById('dashboard-start-workout-btn').addEventListener('click', () => {
-      // If there's an active workout matching this ID, just resume it.
-      if (state.activeWorkout && state.activeWorkout.workoutId === activeInfo.workoutId) {
-        navigate('workout');
-      } else {
-        // Prompt for readiness scores
-        openReadinessModal(upcomingDay, activeInfo.workoutId);
-      }
-    });
+    if (unlockStatus.isUnlocked) {
+      document.getElementById('dashboard-start-workout-btn').addEventListener('click', () => {
+        if (state.activeWorkout && state.activeWorkout.workoutId === activeInfo.workoutId) {
+          navigate('workout');
+        } else {
+          openReadinessModal(upcomingDay, activeInfo.workoutId);
+        }
+      });
+    }
 
   } else {
     const mySessionsCompleted = Object.values(days).every(d => d.status === 'Completed');
