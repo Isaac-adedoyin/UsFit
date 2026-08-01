@@ -825,6 +825,17 @@ app.post('/api/backup/import', requireAuth, (req, res) => {
   }
 });
 
+// Reset Database to Fresh Start State
+app.post('/api/admin/reset-database', requireAuth, (req, res) => {
+  try {
+    db.resetAllData();
+    req.session = null;
+    res.json({ message: 'Database and accounts successfully reset to a fresh start state.' });
+  } catch (err) {
+    res.status(500).json({ error: 'Failed to reset database: ' + err.message });
+  }
+});
+
 // Changelog Endpoint
 app.get('/api/changelog', requireAuth, (req, res) => {
   res.json(db.getChangelog());

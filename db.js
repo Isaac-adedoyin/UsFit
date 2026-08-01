@@ -1020,6 +1020,11 @@ const db = {
   // Read/write base actions
   read: readDb,
   write: writeAtomic,
+  resetAllData: () => {
+    const seed = getDefaultSeedData();
+    writeAtomic(seed);
+    return seed;
+  },
 
   // User Actions
   getUser: (email) => {

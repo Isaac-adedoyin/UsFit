@@ -315,6 +315,12 @@ function setupEventListeners() {
       });
     });
   }
+
+  // Reset database button
+  const resetDbBtn = document.getElementById('reset-database-btn');
+  if (resetDbBtn) {
+    resetDbBtn.addEventListener('click', resetDatabaseAll);
+  }
 }
 
 // Authentication Logic
@@ -2498,6 +2504,28 @@ async function importDatabase(e) {
     }
   };
   reader.readAsText(file);
+}
+
+async function resetDatabaseAll() {
+  if (!confirm('Are you sure you want to reset all workout history, schedule setups, and log records to start completely fresh?')) {
+    return;
+  }
+
+  try {
+    const res = await fetch('/api/admin/reset-database', { method: 'POST' });
+    const data = await res.json();
+    if (!res.ok) throw new Error(data.error || 'Failed to reset database');
+
+    state.user = null;
+    state.schedule = null;
+    state.program = null;
+    state.activeWorkout = null;
+
+    alert('System reset successfully! You can now log back in and set up a fresh weekly schedule.');
+    navigate('login');
+  } catch (err) {
+    alert('Reset failed: ' + err.message);
+  }
 }
 
 // ----------------- SVG ILLUSTRATIONS GENERATORS -----------------
