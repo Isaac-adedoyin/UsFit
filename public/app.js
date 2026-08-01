@@ -791,7 +791,7 @@ function loadDashboard() {
   });
 
   // Render "Today's" or next active workout panel
-  const upcomingDay = sortedDays.find(day => days[day].status === 'Upcoming' || days[day].status === 'In progress');
+  const upcomingDay = sortedDays.find(day => days[day].status !== 'Completed');
   
   if (upcomingDay) {
     const activeInfo = days[upcomingDay];
