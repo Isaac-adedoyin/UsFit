@@ -874,10 +874,12 @@ function loadDashboard() {
   progressTitle.textContent = `Week Schedule: ${week.weekId}`;
   
   // Calculate completion percentage
-  const days = week.days;
-  const totalDays = Object.keys(days).length;
-  const completedDays = Object.values(days).filter(d => d.status === 'Completed').length;
-  const percent = Math.round((completedDays / 3) * 100);
+  const days = week.days || {};
+  const completedDays = Object.values(days).filter(d => {
+    const userStat = (d.userStatuses && state.user && d.userStatuses[state.user.id]) || d.status;
+    return userStat === 'Completed';
+  }).length;
+  const percent = Math.min(100, Math.round((completedDays / 3) * 100));
   
   percentText.textContent = `${percent}%`;
   bar.style.width = `${percent}%`;
@@ -2135,6 +2137,9 @@ function renderSummarySplash() {
       const data = await res.json();
       if (!res.ok) throw new Error(data.error);
 
+      if (data.schedule) {
+        state.schedule = data.schedule;
+      }
       alert('Session saved successfully!');
       state.activeWorkout = null;
       await fetch('/api/workout/active', { method: 'DELETE' });

@@ -642,27 +642,45 @@ app.post('/api/workout/complete', requireAuth, (req, res) => {
   db.clearActiveSession(req.session.userId);
 
   // Update schedule status for today's day to Completed
-  if (scheduledDayName) {
-    const schedule = normalizeSchedule(db.getSchedule());
-    if (schedule.currentWeek && schedule.currentWeek.days[scheduledDayName]) {
-      const completedDay = schedule.currentWeek.days[scheduledDayName];
+  const schedule = normalizeSchedule(db.getSchedule());
+  if (schedule.currentWeek && schedule.currentWeek.days) {
+    const daysObj = schedule.currentWeek.days;
+    let foundKey = Object.keys(daysObj).find(k => k === scheduledDayName);
+    if (!foundKey && scheduledDayName) {
+      foundKey = Object.keys(daysObj).find(k => k.toLowerCase() === scheduledDayName.toLowerCase());
+    }
+    if (!foundKey && workoutId) {
+      foundKey = Object.keys(daysObj).find(k => daysObj[k].workoutId === workoutId);
+    }
+    if (!foundKey) {
+      foundKey = Object.keys(daysObj).find(k => {
+        const uStatus = daysObj[k].userStatuses && daysObj[k].userStatuses[req.session.userId];
+        return uStatus !== 'Completed';
+      });
+    }
+
+    if (foundKey) {
+      const completedDay = daysObj[foundKey];
+      if (!completedDay.userStatuses) completedDay.userStatuses = {};
       completedDay.userStatuses[req.session.userId] = 'Completed';
       completedDay.status = scheduleStatusForUsers(completedDay.userStatuses);
-      
+
       // Auto-unlock next day as 'Upcoming' if it exists and is currently 'Planned'
-      const daysOfCurrentWeek = Object.keys(schedule.currentWeek.days);
-      const dayIndex = {
+      const daysOfCurrentWeek = Object.keys(daysObj);
+      const dayIndexMap = {
         "Sunday": 0, "Monday": 1, "Tuesday": 2, "Wednesday": 3,
         "Thursday": 4, "Friday": 5, "Saturday": 6
       };
-      const sortedDays = daysOfCurrentWeek.sort((a, b) => dayIndex[a] - dayIndex[b]);
-      const currentIdx = sortedDays.indexOf(scheduledDayName);
+      const sortedDays = daysOfCurrentWeek.sort((a, b) => (dayIndexMap[a] ?? 99) - (dayIndexMap[b] ?? 99));
+      const currentIdx = sortedDays.indexOf(foundKey);
       if (currentIdx !== -1 && currentIdx < sortedDays.length - 1) {
         const nextDay = sortedDays[currentIdx + 1];
-        const nextDaySchedule = schedule.currentWeek.days[nextDay];
-        if (nextDaySchedule.userStatuses[req.session.userId] === 'Planned') {
-          nextDaySchedule.userStatuses[req.session.userId] = 'Upcoming';
-          nextDaySchedule.status = scheduleStatusForUsers(nextDaySchedule.userStatuses);
+        const nextDaySchedule = daysObj[nextDay];
+        if (nextDaySchedule && nextDaySchedule.userStatuses) {
+          if (nextDaySchedule.userStatuses[req.session.userId] === 'Planned') {
+            nextDaySchedule.userStatuses[req.session.userId] = 'Upcoming';
+            nextDaySchedule.status = scheduleStatusForUsers(nextDaySchedule.userStatuses);
+          }
         }
       }
 
@@ -670,7 +688,7 @@ app.post('/api/workout/complete', requireAuth, (req, res) => {
     }
   }
 
-  res.json({ message: 'Workout logged successfully!', workoutLog });
+  res.json({ message: 'Workout logged successfully!', workoutLog, schedule: scheduleForUser(schedule, req.session.userId) });
 });
 
 // Analytics & Reports API
