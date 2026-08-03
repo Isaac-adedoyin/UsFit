@@ -943,23 +943,47 @@ body[data-profile="female"] {
 }
 
 .exercise-instructions {
-  margin-top: 1rem;
+  margin-top: 0.75rem;
 }
 
 .exercise-instructions summary {
   cursor: pointer;
   font-weight: 600;
+  font-size: 0.82rem;
   font-family: var(--font-family-display);
-  color: var(--text-secondary);
+  color: var(--accent-blue);
+  background: rgba(59, 130, 246, 0.08);
+  border: 1px solid rgba(59, 130, 246, 0.2);
+  padding: 0.4rem 0.75rem;
+  border-radius: var(--border-radius-sm);
   outline: none;
+  display: inline-flex;
+  align-items: center;
+  gap: 0.35rem;
+  transition: all var(--transition-fast);
+  list-style: none;
+  user-select: none;
+}
+
+.exercise-instructions summary::-webkit-details-marker {
+  display: none;
+}
+
+.exercise-instructions summary:hover {
+  background: rgba(59, 130, 246, 0.16);
+  border-color: var(--accent-blue);
 }
 
 .instructions-content {
-  margin-top: 0.5rem;
+  margin-top: 0.75rem;
   display: flex;
   flex-direction: column;
-  gap: 0.5rem;
-  font-size: 0.9rem;
+  gap: 0.4rem;
+  font-size: 0.85rem;
+  background: var(--bg-tertiary);
+  border: 1px solid var(--glass-border);
+  padding: 0.75rem 1rem;
+  border-radius: var(--border-radius-sm);
 }
 
 .exercise-actions-buttons {
@@ -1353,52 +1377,32 @@ body[data-profile="female"] {
 .mock-chart-container {
   height: 200px;
   border: 1px solid var(--glass-border);
-  background: rgba(0,0,0,0.1);
+  background: rgba(0,0,0,0.15);
   border-radius: var(--border-radius-sm);
-  margin-top: 1rem;
-  display: flex;
-  align-items: flex-end;
-  justify-content: space-around;
-  padding: 1rem;
+  margin-top: 0.75rem;
+  padding: 0.5rem;
   position: relative;
-}
-
-/* Custom HTML chart bars */
-.chart-bar-wrapper {
+  overflow: hidden;
   display: flex;
-  flex-direction: column;
   align-items: center;
-  flex: 1;
+  justify-content: center;
+}
+
+/* SVG chart vector rules */
+.analytics-svg-chart {
+  width: 100%;
   height: 100%;
-  justify-content: flex-end;
+  display: block;
 }
 
-.chart-bar-double {
-  display: flex;
-  gap: 4px;
-  align-items: flex-end;
-  height: 80%;
-  width: 60%;
+.svg-chart-bar {
+  transition: height 0.3s ease-out, y 0.3s ease-out, opacity 0.2s ease;
+  cursor: pointer;
 }
 
-.chart-bar-u1 {
-  background: var(--accent-blue);
-  width: 10px;
-  border-radius: 2px 2px 0 0;
-  min-height: 2px;
-}
-
-.chart-bar-u2 {
-  background: var(--accent-green);
-  width: 10px;
-  border-radius: 2px 2px 0 0;
-  min-height: 2px;
-}
-
-.chart-bar-label {
-  font-size: 0.7rem;
-  color: var(--text-muted);
-  margin-top: 0.5rem;
+.svg-chart-bar:hover {
+  opacity: 0.85;
+  filter: drop-shadow(0 0 6px rgba(255, 255, 255, 0.3));
 }
 
 /* PR layouts */

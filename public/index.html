@@ -76,12 +76,12 @@
       <div class="login-card glass-panel">
         <div class="login-header">
           <div class="login-logo"><span class="logo-glow">Us</span><span>Fit</span></div>
-          <p id="login-subtitle">Sign in to plan & track workouts together</p>
+          <p id="login-subtitle">Track workouts & progress together</p>
         </div>
         
         <!-- Registration tab warning -->
         <div id="register-setup-alert" class="alert alert-info hidden">
-          <strong>First Time Setup!</strong> This email is approved. Enter your name to set up your profile.
+          <strong>First Time Setup!</strong> Enter your name to complete your profile.
         </div>
 
         <form id="auth-form" class="form-group">
@@ -102,7 +102,7 @@
         </form>
 
         <div class="login-footer">
-          <p id="auth-toggle-note">Enter your approved email to sign in or set up your profile.</p>
+          <p id="auth-toggle-note">Enter your approved email to continue.</p>
         </div>
       </div>
     </section>
@@ -110,7 +110,7 @@
     <!-- 2. DASHBOARD VIEW -->
     <section id="dashboard-view" class="view-container hidden">
       <div class="dashboard-header">
-        <h1 class="view-title">Our Gym Dashboard</h1>
+        <h1 class="view-title">Gym Dashboard</h1>
         <p class="text-secondary" id="dashboard-date-str">Monday, July 20, 2026</p>
       </div>
 
@@ -118,7 +118,7 @@
       <div class="week-progress-card glass-panel gradient-border">
         <div class="progress-details">
           <div>
-            <h3>Weekly Consistency</h3>
+            <h3>Weekly Goal</h3>
             <p class="text-secondary" id="progress-weeks-title">Setting up training days...</p>
           </div>
           <div class="progress-percent" id="weekly-percent-text">0%</div>
@@ -145,7 +145,7 @@
       <div id="readiness-overlay" class="modal-overlay hidden">
         <div class="modal-card glass-panel">
           <h2>Ready to Train?</h2>
-          <p class="text-secondary">Rate your readiness before we hit the treadmill.</p>
+          <p class="text-secondary">Rate readiness before warm-up.</p>
           
           <form id="readiness-form">
             <!-- User 1 Readiness -->
@@ -185,12 +185,12 @@
     <section id="planner-view" class="view-container hidden">
       <div class="dashboard-header">
         <h1 class="view-title">Weekly Schedule Planner</h1>
-        <p class="text-secondary">Plan exactly three sessions per week and assign Day 1, 2, and 3.</p>
+        <p class="text-secondary">Select 3 training days for the week.</p>
       </div>
 
       <div class="planner-box glass-panel">
-        <h2>Schedule the Upcoming Week</h2>
-        <p class="text-secondary">We recommend keeping at least one recovery day between active workout sessions.</p>
+        <h2>Schedule Your Week</h2>
+        <p class="text-secondary font-xs">Keep rest days between workout sessions for optimal recovery.</p>
         
         <form id="weekly-plan-form" class="form-group margin-top-md">
           <!-- Week Select -->
@@ -203,7 +203,7 @@
 
           <!-- Training Days Checkboxes -->
           <div class="form-control">
-            <label>Select Exactly Three Workout Days</label>
+            <label>Select 3 Days</label>
             <div class="checkbox-grid">
               <label class="checkbox-tile">
                 <input type="checkbox" name="train-days" value="Sunday">
@@ -236,14 +236,12 @@
             </div>
           </div>
 
-          <!-- Program Mapping details (Day 1, Day 2, Day 3 mapping) -->
+          <!-- Program Mapping details -->
           <div id="mapping-description" class="alert alert-info hidden">
-            <!-- Day 1 -> First Day selected, Day 2 -> Second, etc. -->
           </div>
 
           <!-- Recovery Warnings Box -->
           <div id="planner-warnings-box" class="alert alert-warning hidden">
-            <!-- Dynamic alerts when user chooses consecutive days -->
           </div>
 
           <button type="submit" id="save-week-plan-btn" class="btn btn-accent btn-full" disabled>Lock Schedule</button>
@@ -251,8 +249,8 @@
       </div>
 
       <div class="reschedule-box glass-panel margin-top-md" id="reschedule-section" style="display: none;">
-        <h3>Reschedule a Session</h3>
-        <p class="text-secondary">Missed or need to shift a workout? Move it to another day this week.</p>
+        <h3>Reschedule Session</h3>
+        <p class="text-secondary font-xs">Shift a workout to another day this week.</p>
         <div class="form-row margin-top-sm">
           <div class="form-control">
             <label for="resched-from">Active Session</label>
@@ -280,8 +278,7 @@
       <!-- SECTION A: TREADMILL WARM-UP (60 mins) -->
       <div id="phase-treadmill" class="workout-phase-container">
         <div class="phase-header">
-          <h2>Phase 1: Treadmill Warm-Up (60 Minutes)</h2>
-          <p class="text-secondary">Warm up the body and elevate heart rate through stage-based walking.</p>
+          <h2>Treadmill Warm-Up (60 mins)</h2>
         </div>
 
         <div class="timer-display-box glass-panel">
@@ -332,7 +329,7 @@
               </div>
               <div class="form-control">
                 <label>Notes</label>
-                <input type="text" class="treadmill-input-notes" placeholder="Felt good, steady...">
+                <input type="text" class="treadmill-input-notes" placeholder="Felt good...">
               </div>
             </div>
           </div>
@@ -363,7 +360,7 @@
               </div>
               <div class="form-control">
                 <label>Notes</label>
-                <input type="text" class="treadmill-input-notes" placeholder="Tired today, walked slower...">
+                <input type="text" class="treadmill-input-notes" placeholder="Tired today...">
               </div>
             </div>
           </div>
@@ -392,9 +389,9 @@
               <!-- SVG Illustration gets injected here -->
             </div>
 
-            <!-- Accordion Details -->
+            <!-- Sleek Accordion Details -->
             <details class="exercise-instructions margin-top-sm">
-              <summary>Show Instructions & Safety Notes</summary>
+              <summary>💡 Form & Safety Tips</summary>
               <div class="instructions-content text-secondary">
                 <p><strong>Setup:</strong> <span id="workout-ex-setup">...</span></p>
                 <p><strong>Movement:</strong> <span id="workout-ex-movement">...</span></p>
@@ -415,15 +412,14 @@
           <div class="exercise-logging-card glass-panel">
             <!-- Giant Target Goal Banner -->
             <div class="workout-goal-banner" id="workout-goal-banner">
-              Perform <span id="workout-goal-sets">3</span> sets of <span id="workout-goal-reps">8-12</span> reps
+              Target: <span id="workout-goal-sets">3</span> sets × <span id="workout-goal-reps">8-12</span> reps
             </div>
 
             <!-- Tab Switcher for Users -->
             <div class="workout-user-tabs" id="workout-user-tabs">
-              <!-- buttons dynamically populated or active toggled -->
             </div>
 
-            <!-- Exercise set work timer (displayed for timed drills like Plank) -->
+            <!-- Exercise set work timer -->
             <div class="exercise-work-timer-box margin-top-sm hidden" id="exercise-work-timer-box">
               <div class="work-timer-header">Set Hold Timer</div>
               <div class="work-timer-clock" id="work-timer-clock">00:30</div>
@@ -465,7 +461,6 @@
                     <span>Done</span>
                   </div>
                   <div class="sets-logger-rows" id="active-user-sets-rows">
-                    <!-- Dynamically populated sets rows -->
                   </div>
                 </div>
               </div>
@@ -481,8 +476,7 @@
       <!-- SECTION C: GUIDED STRETCHING -->
       <div id="phase-stretching" class="workout-phase-container hidden">
         <div class="phase-header">
-          <h2>Phase 3: Guided Stretching (10 Minutes)</h2>
-          <p class="text-secondary">Release tension and lock in recovery for the specific muscles trained today.</p>
+          <h2>Guided Stretching (10 mins)</h2>
         </div>
 
         <div class="stretching-grid margin-top-md">
@@ -491,7 +485,6 @@
             <p class="muscle-badge" id="stretch-muscle">Chest</p>
             
             <div class="stretch-media-placeholder margin-top-sm" id="stretch-media-container">
-              <!-- PNG image gets injected here -->
             </div>
 
             <p id="stretch-description" class="text-secondary margin-top-sm">...</p>
@@ -516,7 +509,6 @@
               <div class="progress-bar-fill" id="stretch-progress-bar" style="width: 100%"></div>
             </div>
             <div class="stretches-list-preview margin-top-md" id="stretches-list-preview">
-              <!-- Inline stretches list -->
             </div>
           </div>
         </div>
@@ -527,7 +519,6 @@
         <div class="summary-splash glass-panel text-center">
           <div class="celebration-icon">🏆</div>
           <h1>Session Complete!</h1>
-          <p class="text-secondary">Amazing job! You completed all scheduled routines for today.</p>
           
           <div class="summary-stats-grid margin-top-md">
             <div class="stat-box glass-panel">
@@ -550,7 +541,7 @@
 
           <!-- Session Difficulty Feedback -->
           <div class="session-feedback-box margin-top-md text-left">
-            <h3>How hard was today's session?</h3>
+            <h3>Session Rating</h3>
             <div class="form-grid margin-top-sm">
               <div class="form-control">
                 <label id="lbl-difficulty-u1">My Rating (1-5)</label>
@@ -575,8 +566,8 @@
             </div>
             
             <div class="form-control margin-top-sm">
-              <label>General Session Notes</label>
-              <textarea id="session-summary-notes" class="input-textarea" placeholder="Add any details about energy levels, barbell speed, or gym layout..."></textarea>
+              <label>Notes</label>
+              <textarea id="session-summary-notes" class="input-textarea" placeholder="Add any details about today's session..."></textarea>
             </div>
           </div>
 
@@ -591,12 +582,12 @@
     <section id="program-view" class="view-container hidden">
       <div class="dashboard-header flex-header">
         <div>
-          <h1 class="view-title">Workout Program Template</h1>
-          <p class="text-secondary">View or customize the exercises, set counts, rep targets, and groupings.</p>
+          <h1 class="view-title">Workout Program</h1>
+          <p class="text-secondary font-xs">Customize exercises, set counts, and rep targets.</p>
         </div>
         <div class="header-actions">
-          <button id="reset-program-btn" class="btn btn-secondary">Restore Base Program</button>
-          <button id="save-program-changes-btn" class="btn btn-accent">Save All Changes</button>
+          <button id="reset-program-btn" class="btn btn-secondary">Restore Default</button>
+          <button id="save-program-changes-btn" class="btn btn-accent">Save Changes</button>
         </div>
       </div>
 
@@ -610,21 +601,19 @@
         <div class="day-overview-header">
           <h2 id="editor-day-title">Day 1 — Build the Front Frame</h2>
           <div class="form-control margin-top-sm">
-            <label>Muscles Trained Focus</label>
+            <label>Focus</label>
             <input type="text" id="editor-day-focus" class="input-text">
           </div>
         </div>
 
         <div class="exercises-edit-list margin-top-md" id="editor-exercises-list">
-          <!-- Exercised details populate here -->
         </div>
 
-        <button class="btn btn-primary margin-top-md" id="add-exercise-btn">+ Add New Exercise</button>
+        <button class="btn btn-primary margin-top-md" id="add-exercise-btn">+ Add Exercise</button>
       </div>
 
-      <!-- Change log records -->
       <div class="changelog-panel glass-panel margin-top-md">
-        <h3>Program Change Log</h3>
+        <h3>Change Log</h3>
         <ul id="changelog-list" class="changelog-list">
           <li class="text-secondary">No edits recorded yet.</li>
         </ul>
@@ -635,38 +624,32 @@
     <section id="progress-view" class="view-container hidden">
       <div class="dashboard-header">
         <h1 class="view-title">Progress & Analytics</h1>
-        <p class="text-secondary">Analyze training logs, cardiovascular treadmill distances, and body metric tracks.</p>
+        <p class="text-secondary font-xs">Track volume, treadmill distance, and personal records.</p>
       </div>
 
       <!-- Stats Grid -->
       <div class="stats-overview-grid margin-top-md" id="progress-stats-container">
-        <!-- populated with details -->
       </div>
 
       <!-- Chart Sections -->
       <div class="charts-grid margin-top-md">
         <div class="chart-card glass-panel">
-          <h3>Total Training Volume per Session</h3>
-          <p class="text-secondary">Accumulated load (weight × reps × completed sets)</p>
+          <h3>Total Training Volume (kg)</h3>
           <div class="mock-chart-container" id="chart-volume">
-            <!-- Custom HTML / CSS graphs -->
           </div>
         </div>
 
         <div class="chart-card glass-panel">
           <h3>Treadmill Running Distance (km)</h3>
-          <p class="text-secondary">Accumulated cardiorespiratory work</p>
           <div class="mock-chart-container" id="chart-treadmill">
-            <!-- Custom HTML / CSS graphs -->
           </div>
         </div>
       </div>
 
       <!-- Personal Records (PR) Panel -->
       <div class="pr-card glass-panel margin-top-md">
-        <h3>Estimated Personal Records (Max Weights lifted)</h3>
+        <h3>Personal Records</h3>
         <div class="pr-grid" id="pr-list-container">
-          <!-- Dynamically populated list of maximum weights per exercise -->
         </div>
       </div>
 
@@ -674,7 +657,7 @@
       <div class="measurements-section glass-panel margin-top-md">
         <div class="flex-header">
           <h3>Body Measurements History</h3>
-          <button id="add-measurements-btn" class="btn btn-primary btn-sm">+ Log New Stats</button>
+          <button id="add-measurements-btn" class="btn btn-primary btn-sm">+ Log Stats</button>
         </div>
 
         <div class="measurements-history-table margin-top-sm">
@@ -682,17 +665,16 @@
             <thead>
               <tr>
                 <th>Date</th>
-                <th>Weight (kg)</th>
-                <th>Chest (cm)</th>
-                <th>Waist (cm)</th>
-                <th>Hips (cm)</th>
-                <th>Arms (cm)</th>
-                <th>Legs (cm)</th>
+                <th>Weight</th>
+                <th>Chest</th>
+                <th>Waist</th>
+                <th>Hips</th>
+                <th>Arms</th>
+                <th>Legs</th>
                 <th>Notes</th>
               </tr>
             </thead>
             <tbody id="measurements-table-body">
-              <!-- dynamic rows -->
             </tbody>
           </table>
         </div>
@@ -731,7 +713,7 @@
             </div>
             <div class="form-control margin-top-sm">
               <label>Optional Notes</label>
-              <input type="text" id="meas-notes" placeholder="Woke up fasting, hydrated...">
+              <input type="text" id="meas-notes" placeholder="Notes...">
             </div>
             <div class="modal-actions margin-top-md">
               <button type="button" id="cancel-measure-btn" class="btn btn-secondary">Cancel</button>
@@ -745,31 +727,30 @@
     <!-- 7. CONFIG & SETTINGS SCREEN -->
     <section id="settings-view" class="view-container hidden">
       <div class="dashboard-header">
-        <h1 class="view-title">App Configuration & Settings</h1>
-        <p class="text-secondary">Customize default workout settings, backup database files, and configure profiles.</p>
+        <h1 class="view-title">App Settings</h1>
       </div>
 
       <div class="settings-grid margin-top-md">
         <div class="settings-card glass-panel">
-          <h3>User Settings Profile</h3>
+          <h3>Profile Settings</h3>
           <form id="profile-settings-form" class="form-group margin-top-sm">
             <div class="form-control">
               <label>Display Nickname</label>
               <input type="text" id="settings-display-name" required>
             </div>
             <div class="form-control">
-              <label>Weight Unit preference</label>
+              <label>Weight Unit</label>
               <select id="settings-weight-unit" class="input-select">
                 <option value="kg">Kilograms (kg)</option>
                 <option value="lbs">Pounds (lbs)</option>
               </select>
             </div>
             <div class="form-control">
-              <label>Target Heart Rate (Warm-up Target)</label>
+              <label>Target Heart Rate (bpm)</label>
               <input type="number" id="settings-target-hr" placeholder="e.g. 130">
             </div>
             <div class="form-control">
-              <label>Default Rest Duration (seconds)</label>
+              <label>Default Rest Duration (sec)</label>
               <input type="number" id="settings-default-rest" placeholder="e.g. 90">
             </div>
             <button type="submit" class="btn btn-accent margin-top-sm">Save Profile Settings</button>
@@ -777,43 +758,38 @@
         </div>
 
         <div class="settings-card glass-panel">
-          <h3>Workout Reminders & Push Notifications</h3>
-          <p class="text-secondary">Get desktop & mobile alerts on scheduled workout days so you never miss a session.</p>
+          <h3>Workout Reminders</h3>
+          <p class="text-secondary font-xs">Receive alerts on scheduled workout days.</p>
           
           <div class="notification-status-box margin-top-sm">
             <div class="flex-between align-center">
-              <span>Browser Permission:</span>
+              <span>Permission:</span>
               <span id="notif-permission-badge" class="badge badge-warning">Checking...</span>
             </div>
-            <p class="text-secondary font-xs margin-top-xs" id="notif-permission-hint">Enable notifications to receive daily training alerts.</p>
           </div>
 
           <div class="margin-top-md">
             <button id="enable-notif-btn" class="btn btn-accent btn-full">
-              <svg width="18" height="18" viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="2"><path d="M18 8A6 6 0 0 0 6 8c0 7-3 9-3 9h18s-3-2-3-9"/><path d="M13.73 21a2 2 0 0 1-3.46 0"/></svg>
-              Enable Browser Reminders
+              Enable Reminders
             </button>
             <button id="test-notif-btn" class="btn btn-secondary btn-full margin-top-sm">
-              <svg width="18" height="18" viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="2"><polygon points="11 5 6 9 2 9 2 15 6 15 11 19 11 5"/><path d="M19.07 4.93a10 10 0 0 1 0 14.14"/><path d="M15.54 8.46a5 5 0 0 1 0 7.07"/></svg>
-              Send Test Notification
+              Send Test Alert
             </button>
           </div>
         </div>
 
         <div class="settings-card glass-panel">
-          <h3>Database Backup & Export</h3>
-          <p class="text-secondary">Export the entire session history and program templates to standard JSON or import from file.</p>
+          <h3>Database Backup</h3>
+          <p class="text-secondary font-xs">Export or restore session history JSON.</p>
           
           <div class="backup-actions-box margin-top-md">
             <button id="backup-export-btn" class="btn btn-primary btn-full">
-              <svg width="18" height="18" viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="2"><path d="M21 15v4a2 2 0 0 1-2 2H5a2 2 0 0 1-2-2v-4"/><polyline points="7 10 12 15 17 10"/><line x1="12" y1="15" x2="12" y2="3"/></svg>
-              Export JSON Database
+              Export Database JSON
             </button>
             
             <div class="import-container margin-top-sm">
               <label for="backup-import-file" class="btn btn-secondary btn-full cursor-pointer text-center">
-                <svg width="18" height="18" viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="2"><path d="M21 15v4a2 2 0 0 1-2 2H5a2 2 0 0 1-2-2v-4"/><polyline points="17 8 12 3 7 8"/><line x1="12" y1="3" x2="12" y2="15"/></svg>
-                Select Backup File to Import
+                Import Backup File
               </label>
               <input type="file" id="backup-import-file" class="hidden-input" accept=".json">
             </div>

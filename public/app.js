@@ -8,11 +8,128 @@ const state = {
   activeWorkout: null, // Active workout session tracking details
   workoutTimer: null, // Interval timer object
   restTimer: null, // Interval timer object
+  workTimer: null, // Interval timer object
   stretchTimer: null, // Interval timer object
   analyticsData: null // Cache for stats & charts
 };
 
 let activeWorkoutSaveTimer = null;
+
+// --- SCREEN WAKE LOCK & BACKGROUND TIMER SUBSYSTEM ---
+let wakeLockSentinel = null;
+
+async function requestWakeLock() {
+  if ('wakeLock' in navigator && !wakeLockSentinel) {
+    try {
+      wakeLockSentinel = await navigator.wakeLock.request('screen');
+      wakeLockSentinel.addEventListener('release', () => {
+        wakeLockSentinel = null;
+      });
+    } catch (err) {
+      console.warn('Screen Wake Lock unavailable or denied:', err);
+    }
+  }
+}
+
+function releaseWakeLock() {
+  if (wakeLockSentinel) {
+    wakeLockSentinel.release().catch(() => {});
+    wakeLockSentinel = null;
+  }
+}
+
+// Background Web Worker Ticker
+let timerWorker = null;
+const timerListeners = new Set();
+
+function getTimerWorker() {
+  if (!timerWorker) {
+    try {
+      const workerCode = `
+        let interval = null;
+        self.onmessage = function(e) {
+          if (e.data === 'start') {
+            if (!interval) {
+              interval = setInterval(() => { self.postMessage('tick'); }, 1000);
+            }
+          } else if (e.data === 'stop') {
+            if (interval) {
+              clearInterval(interval);
+              interval = null;
+            }
+          }
+        };
+      `;
+      const blob = new Blob([workerCode], { type: 'application/javascript' });
+      timerWorker = new Worker(URL.createObjectURL(blob));
+      timerWorker.onmessage = () => {
+        timerListeners.forEach(cb => {
+          try { cb(); } catch (err) { console.error('Timer tick listener error:', err); }
+        });
+      };
+    } catch (e) {
+      console.warn('Web Worker timer fallback to main thread interval:', e);
+    }
+  }
+  return timerWorker;
+}
+
+function addTimerListener(callback) {
+  timerListeners.add(callback);
+  requestWakeLock();
+  const worker = getTimerWorker();
+  if (worker) worker.postMessage('start');
+}
+
+function removeTimerListener(callback) {
+  timerListeners.delete(callback);
+  if (timerListeners.size === 0) {
+    const worker = getTimerWorker();
+    if (worker) worker.postMessage('stop');
+    releaseWakeLock();
+  }
+}
+
+function stopAllActiveTimers() {
+  if (state.workoutTimer) { clearInterval(state.workoutTimer); state.workoutTimer = null; }
+  if (state.restTimer) { clearInterval(state.restTimer); state.restTimer = null; }
+  if (state.workTimer) { clearInterval(state.workTimer); state.workTimer = null; }
+  if (state.stretchTimer) { clearInterval(state.stretchTimer); state.stretchTimer = null; }
+  timerListeners.clear();
+  if (timerWorker) timerWorker.postMessage('stop');
+  releaseWakeLock();
+}
+
+function notifyTimerComplete(title, body) {
+  if ('Notification' in window && Notification.permission === 'granted' && document.visibilityState === 'hidden') {
+    try {
+      new Notification(title, {
+        body,
+        icon: 'https://cdn-icons-png.flaticon.com/512/2964/2964514.png'
+      });
+    } catch (e) {
+      console.warn('Notification failed:', e);
+    }
+  }
+}
+
+function requestNotificationPermission() {
+  if ('Notification' in window && Notification.permission === 'default') {
+    Notification.requestPermission().catch(() => {});
+  }
+}
+
+// Global visibility change handler to auto-wake Screen Wake Lock and immediately trigger tick sync
+document.addEventListener('visibilitychange', () => {
+  if (document.visibilityState === 'visible') {
+    if (timerListeners.size > 0) {
+      requestWakeLock();
+      timerListeners.forEach(cb => {
+        try { cb(); } catch (e) {}
+      });
+    }
+  }
+});
 
 async function loadActiveWorkoutSession() {
   try {
@@ -440,9 +557,7 @@ async function handleLogout() {
     state.user = null;
     state.activeWorkout = null;
     clearInterval(activeWorkoutSaveTimer);
-    clearInterval(state.workoutTimer);
-    clearInterval(state.restTimer);
-    clearInterval(state.stretchTimer);
+    stopAllActiveTimers();
     resetAuthFormState({ clearEmail: true });
     navigate('login');
   } catch (e) {
@@ -1023,9 +1138,7 @@ function initActiveWorkoutWizard() {
   document.getElementById('phase-summary').classList.add('hidden');
 
   // Clear timers
-  clearInterval(state.workoutTimer);
-  clearInterval(state.restTimer);
-  clearInterval(state.stretchTimer);
+  stopAllActiveTimers();
 
   // Show active phase
   if (w.phase === 'treadmill') {
@@ -1091,9 +1204,12 @@ function getCardioStageSuggestions(stage) {
 }
 
 function startTreadmillCountdown() {
+  requestNotificationPermission();
   const displayClock = document.getElementById('treadmill-timer-clock');
   const stageLabel = document.getElementById('treadmill-stage-name');
   const workoutTemplate = state.program.days.find(d => d.id === state.activeWorkout.workoutId);
+
+  let targetEndTime = Date.now() + state.activeWorkout.treadmillTimer * 1000;
 
   const updateUI = () => {
     const seconds = state.activeWorkout.treadmillTimer;
@@ -1122,6 +1238,7 @@ function startTreadmillCountdown() {
     if (currentStageIdx !== state.activeWorkout.treadmillStageIdx) {
       state.activeWorkout.treadmillStageIdx = currentStageIdx;
       playBeep(900, 0.4); // stage change notification beep!
+      notifyTimerComplete('Treadmill Stage Changed', `Stage ${currentStageIdx + 1}: ${workoutTemplate.treadmill[currentStageIdx].name}`);
       renderTreadmillStagesList();
     }
 
@@ -1156,47 +1273,74 @@ function startTreadmillCountdown() {
   const startBtn = document.getElementById('treadmill-start-btn');
   const skipBtn = document.getElementById('treadmill-skip-btn');
 
+  const onTick = () => {
+    if (state.activeWorkout.treadmillTimerActive) {
+      const remainingSec = Math.max(0, Math.ceil((targetEndTime - Date.now()) / 1000));
+      state.activeWorkout.treadmillTimer = remainingSec;
+      updateUI();
+
+      if (remainingSec === 0) {
+        stopTreadmillTimer();
+        playBeep(1000, 1.0);
+        notifyTimerComplete('Treadmill Warm-up Complete! 🏃‍♂️', 'Treadmill warm-up complete! Time to start the working sets.');
+        alert('Treadmill warm-up complete! Time to start the working sets.');
+        saveTreadmillLogsAndProceed();
+      }
+    }
+  };
+
+  function startTreadmillTimer() {
+    stopTreadmillTimer();
+    targetEndTime = Date.now() + state.activeWorkout.treadmillTimer * 1000;
+    state.workoutTimer = setInterval(onTick, 1000);
+    addTimerListener(onTick);
+  }
+
+  function stopTreadmillTimer() {
+    if (state.workoutTimer) {
+      clearInterval(state.workoutTimer);
+      state.workoutTimer = null;
+    }
+    removeTimerListener(onTick);
+  }
+
   pauseBtn.onclick = () => {
     state.activeWorkout.treadmillTimerActive = false;
     pauseBtn.style.display = 'none';
     startBtn.style.display = 'inline-block';
+    stopTreadmillTimer();
   };
 
   startBtn.onclick = () => {
     state.activeWorkout.treadmillTimerActive = true;
     startBtn.style.display = 'none';
     pauseBtn.style.display = 'inline-block';
+    startTreadmillTimer();
   };
 
   skipBtn.onclick = () => {
     if (confirm('Are you sure you want to skip the treadmill warm-up?')) {
+      stopTreadmillTimer();
       state.activeWorkout.treadmillTimer = 0;
       saveTreadmillLogsAndProceed();
     }
   };
 
   document.getElementById('complete-warmup-btn').onclick = () => {
+    stopTreadmillTimer();
     saveTreadmillLogsAndProceed();
   };
 
-  // Timer interval
-  state.workoutTimer = setInterval(() => {
-    if (state.activeWorkout.treadmillTimerActive) {
-      if (state.activeWorkout.treadmillTimer > 0) {
-        state.activeWorkout.treadmillTimer--;
-        updateUI();
-      } else {
-        clearInterval(state.workoutTimer);
-        playBeep(1000, 1.0);
-        alert('Treadmill warm-up complete! Time to start the working sets.');
-        saveTreadmillLogsAndProceed();
-      }
-    }
-  }, 1000);
+  if (state.activeWorkout.treadmillTimerActive) {
+    startTreadmillTimer();
+  }
 }
 
 function saveTreadmillLogsAndProceed() {
-  clearInterval(state.workoutTimer);
+  if (state.workoutTimer) {
+    clearInterval(state.workoutTimer);
+    state.workoutTimer = null;
+  }
   
   // Extract inputs
   const grabTreadmillCardLogs = (cardEl, userObj) => {
@@ -1335,6 +1479,50 @@ function renderStrengthExercisePanel() {
   // --- Timer 1: Set Hold/Work Timer (displayed only for timed exercises like Plank) ---
   const workTimerBox = document.getElementById('exercise-work-timer-box');
   let workSecondsRemaining = exercise.repRangeMin || 30;
+  let workTargetEnd = 0;
+
+  const onWorkTick = () => {
+    if (state.workTimer) {
+      const remaining = Math.max(0, Math.ceil((workTargetEnd - Date.now()) / 1000));
+      workSecondsRemaining = remaining;
+      updateWorkTimerClock(workSecondsRemaining);
+
+      if (remaining === 0) {
+        stopWorkTimer();
+        const workToggle = document.getElementById('work-timer-toggle');
+        if (workToggle) {
+          workToggle.textContent = 'Start Hold';
+          workToggle.className = 'btn btn-primary btn-xs';
+        }
+        workSecondsRemaining = exercise.repRangeMin || 30;
+        updateWorkTimerClock(workSecondsRemaining);
+        
+        playBeep(660, 0.2);
+        setTimeout(() => playBeep(660, 0.2), 300);
+        setTimeout(() => playBeep(880, 0.5), 600);
+        
+        notifyTimerComplete('Hold Completed! 🔥', `Great job on your ${exercise.name} set!`);
+        setTimeout(() => {
+          alert(`🔥 Hold completed! Great job on your ${exercise.name} set!`);
+        }, 50);
+      }
+    }
+  };
+
+  function stopWorkTimer() {
+    if (state.workTimer) {
+      clearInterval(state.workTimer);
+      state.workTimer = null;
+    }
+    removeTimerListener(onWorkTick);
+  }
+
+  function startWorkTimer() {
+    stopWorkTimer();
+    workTargetEnd = Date.now() + workSecondsRemaining * 1000;
+    state.workTimer = setInterval(onWorkTick, 1000);
+    addTimerListener(onWorkTick);
+  }
 
   if (exercise.isTimed) {
     workTimerBox.classList.remove('hidden');
@@ -1345,48 +1533,29 @@ function renderStrengthExercisePanel() {
     workToggle.className = 'btn btn-primary btn-xs';
     
     workToggle.onclick = () => {
+      requestNotificationPermission();
       if (state.workTimer) {
         // Pause
-        clearInterval(state.workTimer);
-        state.workTimer = null;
+        stopWorkTimer();
         workToggle.textContent = 'Resume Hold';
         workToggle.className = 'btn btn-accent btn-xs';
       } else {
         // Start/Resume
         workToggle.textContent = 'Pause Hold';
         workToggle.className = 'btn btn-secondary btn-xs';
-        state.workTimer = setInterval(() => {
-          if (workSecondsRemaining > 0) {
-            workSecondsRemaining--;
-            updateWorkTimerClock(workSecondsRemaining);
-          } else {
-            clearInterval(state.workTimer);
-            state.workTimer = null;
-            workToggle.textContent = 'Start Hold';
-            workToggle.className = 'btn btn-primary btn-xs';
-            workSecondsRemaining = exercise.repRangeMin || 30;
-            updateWorkTimerClock(workSecondsRemaining);
-            
-            // Play a multi-tone countdown chime
-            playBeep(660, 0.2);
-            setTimeout(() => playBeep(660, 0.2), 300);
-            setTimeout(() => playBeep(880, 0.5), 600);
-            
-            setTimeout(() => {
-              alert(`🔥 Hold completed! Great job on your ${exercise.name} set!`);
-            }, 50);
-          }
-        }, 1000);
+        startWorkTimer();
       }
     };
     
     document.getElementById('work-timer-minus').onclick = () => {
       workSecondsRemaining = Math.max(0, workSecondsRemaining - 5);
+      if (state.workTimer) workTargetEnd = Date.now() + workSecondsRemaining * 1000;
       updateWorkTimerClock(workSecondsRemaining);
     };
     
     document.getElementById('work-timer-plus').onclick = () => {
       workSecondsRemaining += 5;
+      if (state.workTimer) workTargetEnd = Date.now() + workSecondsRemaining * 1000;
       updateWorkTimerClock(workSecondsRemaining);
     };
   } else {
@@ -1395,6 +1564,50 @@ function renderStrengthExercisePanel() {
 
   // --- Timer 2: Rest Period Timer ---
   let restSecondsRemaining = exercise.restSeconds;
+  let restTargetEnd = 0;
+
+  const onRestTick = () => {
+    if (state.restTimer) {
+      const remaining = Math.max(0, Math.ceil((restTargetEnd - Date.now()) / 1000));
+      restSecondsRemaining = remaining;
+      updateRestTimerClock(restSecondsRemaining);
+
+      if (remaining === 0) {
+        stopRestTimer();
+        const timerToggle = document.getElementById('rest-timer-toggle');
+        if (timerToggle) {
+          timerToggle.textContent = 'Start Rest';
+          timerToggle.className = 'btn btn-primary btn-xs';
+        }
+        restSecondsRemaining = exercise.restSeconds;
+        updateRestTimerClock(restSecondsRemaining);
+        
+        playBeep(880, 0.35);
+        setTimeout(() => playBeep(880, 0.35), 450);
+        
+        notifyTimerComplete('Rest Complete! ⏱️', `Get ready for your next set of ${exercise.name}.`);
+        setTimeout(() => {
+          alert(`Rest completed! Get ready for the next set of ${exercise.name}.`);
+        }, 50);
+      }
+    }
+  };
+
+  function stopRestTimer() {
+    if (state.restTimer) {
+      clearInterval(state.restTimer);
+      state.restTimer = null;
+    }
+    removeTimerListener(onRestTick);
+  }
+
+  function startRestTimer() {
+    stopRestTimer();
+    restTargetEnd = Date.now() + restSecondsRemaining * 1000;
+    state.restTimer = setInterval(onRestTick, 1000);
+    addTimerListener(onRestTick);
+  }
+
   updateRestTimerClock(restSecondsRemaining);
 
   const timerToggle = document.getElementById('rest-timer-toggle');
@@ -1402,47 +1615,29 @@ function renderStrengthExercisePanel() {
   timerToggle.className = 'btn btn-primary btn-xs';
 
   timerToggle.onclick = () => {
+    requestNotificationPermission();
     if (state.restTimer) {
       // Pause
-      clearInterval(state.restTimer);
-      state.restTimer = null;
+      stopRestTimer();
       timerToggle.textContent = 'Resume Rest';
       timerToggle.className = 'btn btn-accent btn-xs';
     } else {
       // Start/Resume
       timerToggle.textContent = 'Pause Rest';
       timerToggle.className = 'btn btn-secondary btn-xs';
-      state.restTimer = setInterval(() => {
-        if (restSecondsRemaining > 0) {
-          restSecondsRemaining--;
-          updateRestTimerClock(restSecondsRemaining);
-        } else {
-          clearInterval(state.restTimer);
-          state.restTimer = null;
-          timerToggle.textContent = 'Start Rest';
-          timerToggle.className = 'btn btn-primary btn-xs';
-          restSecondsRemaining = exercise.restSeconds;
-          updateRestTimerClock(restSecondsRemaining);
-          
-          // Sound a double-chime alarm beep
-          playBeep(880, 0.35);
-          setTimeout(() => playBeep(880, 0.35), 450);
-          
-          setTimeout(() => {
-            alert(`Rest completed! Get ready for the next set of ${exercise.name}.`);
-          }, 50);
-        }
-      }, 1000);
+      startRestTimer();
     }
   };
 
   document.getElementById('rest-timer-minus').onclick = () => {
     restSecondsRemaining = Math.max(0, restSecondsRemaining - 15);
+    if (state.restTimer) restTargetEnd = Date.now() + restSecondsRemaining * 1000;
     updateRestTimerClock(restSecondsRemaining);
   };
 
   document.getElementById('rest-timer-plus').onclick = () => {
     restSecondsRemaining += 15;
+    if (state.restTimer) restTargetEnd = Date.now() + restSecondsRemaining * 1000;
     updateRestTimerClock(restSecondsRemaining);
   };
 
@@ -1732,6 +1927,7 @@ function startStretchingWizard() {
   // Stretch Countdown Setup
   w.stretchTimer = stretch.duration;
   w.stretchTimerActive = true;
+  let stretchTargetEnd = Date.now() + w.stretchTimer * 1000;
   
   const displayClock = document.getElementById('stretch-timer-clock');
   const bar = document.getElementById('stretch-progress-bar');
@@ -1753,25 +1949,70 @@ function startStretchingWizard() {
   const nextBtn = document.getElementById('next-stretch-btn');
   const skipBtn = document.getElementById('skip-stretching-btn');
 
+  const onStretchTick = () => {
+    if (w.stretchTimerActive) {
+      const remainingSec = Math.max(0, Math.ceil((stretchTargetEnd - Date.now()) / 1000));
+      w.stretchTimer = remainingSec;
+      updateClockUI();
+
+      if (remainingSec === 0) {
+        if (stretch.sideIndicator && w.stretchSide === 'left') {
+          playBeep(950, 0.6);
+          notifyTimerComplete('Switch Stretch Side 🧘‍♀️', `Switch to Right side for ${stretch.name}`);
+          w.stretchSide = 'right';
+          w.stretchTimer = stretch.duration;
+          stretchTargetEnd = Date.now() + w.stretchTimer * 1000;
+          updateSideAlertUI(stretch, sideAlert);
+          updateClockUI();
+        } else {
+          stopStretchTimer();
+          playBeep(950, 0.6);
+          notifyTimerComplete('Stretch Complete! 🧘', `${stretch.name} finished.`);
+          advanceStretchStage(workoutTemplate.stretches.length);
+        }
+      }
+    }
+  };
+
+  function stopStretchTimer() {
+    if (state.stretchTimer) {
+      clearInterval(state.stretchTimer);
+      state.stretchTimer = null;
+    }
+    removeTimerListener(onStretchTick);
+  }
+
+  function startStretchTimer() {
+    stopStretchTimer();
+    stretchTargetEnd = Date.now() + w.stretchTimer * 1000;
+    state.stretchTimer = setInterval(onStretchTick, 1000);
+    addTimerListener(onStretchTick);
+  }
+
   pauseBtn.onclick = () => {
     w.stretchTimerActive = false;
     pauseBtn.style.display = 'none';
     startBtn.style.display = 'inline-block';
+    stopStretchTimer();
   };
 
   startBtn.onclick = () => {
+    requestNotificationPermission();
     w.stretchTimerActive = true;
     startBtn.style.display = 'none';
     pauseBtn.style.display = 'inline-block';
+    startStretchTimer();
   };
 
   nextBtn.onclick = () => {
     if (stretch.sideIndicator && w.stretchSide === 'left') {
       w.stretchSide = 'right';
       w.stretchTimer = stretch.duration;
+      stretchTargetEnd = Date.now() + w.stretchTimer * 1000;
       updateSideAlertUI(stretch, sideAlert);
       updateClockUI();
     } else {
+      stopStretchTimer();
       advanceStretchStage(workoutTemplate.stretches.length);
     }
   };
@@ -1779,36 +2020,22 @@ function startStretchingWizard() {
   skipBtn.onclick = () => {
     const reason = prompt("Enter a reason for skipping the stretching portion:");
     if (reason !== null) {
+      stopStretchTimer();
       state.activeWorkout.stretchSkippedReason = reason;
       proceedToSummary();
     }
   };
 
-  // Interval timer
-  state.stretchTimer = setInterval(() => {
-    if (w.stretchTimerActive) {
-      if (w.stretchTimer > 0) {
-        w.stretchTimer--;
-        updateClockUI();
-      } else {
-        if (stretch.sideIndicator && w.stretchSide === 'left') {
-          playBeep(950, 0.6);
-          w.stretchSide = 'right';
-          w.stretchTimer = stretch.duration;
-          updateSideAlertUI(stretch, sideAlert);
-          updateClockUI();
-        } else {
-          clearInterval(state.stretchTimer);
-          playBeep(950, 0.6);
-          advanceStretchStage(workoutTemplate.stretches.length);
-        }
-      }
-    }
-  }, 1000);
+  if (w.stretchTimerActive) {
+    startStretchTimer();
+  }
 }
 
 function advanceStretchStage(totalStretches) {
-  clearInterval(state.stretchTimer);
+  if (state.stretchTimer) {
+    clearInterval(state.stretchTimer);
+    state.stretchTimer = null;
+  }
   const w = state.activeWorkout;
   w.stretchSide = null; // Reset side preference
   
@@ -2337,6 +2564,81 @@ function renderProgressStatsGrid() {
   });
 }
 
+function buildSvgBarChart({ items, u1, u2, getValueFn, unitStr, defaultMax }) {
+  const width = 500;
+  const height = 180;
+  const paddingBottom = 30;
+  const paddingTop = 20;
+  const chartHeight = height - paddingBottom - paddingTop;
+  const paddingLeft = 15;
+  const paddingRight = 15;
+  const chartWidth = width - paddingLeft - paddingRight;
+
+  const maxVal = Math.max(defaultMax, ...items.map(item => {
+    const v1 = u1 && item.users && item.users[u1.id] ? getValueFn(item.users[u1.id]) : 0;
+    const v2 = u2 && item.users && item.users[u2.id] ? getValueFn(item.users[u2.id]) : 0;
+    return Math.max(v1, v2);
+  }));
+
+  const stepX = chartWidth / items.length;
+  const barW = Math.min(18, Math.floor(stepX * 0.28));
+
+  let svgHtml = `<svg viewBox="0 0 ${width} ${height}" preserveAspectRatio="xMidYMid meet" class="analytics-svg-chart">`;
+  
+  svgHtml += `
+    <defs>
+      <linearGradient id="chart-grad-u1" x1="0" y1="0" x2="0" y2="1">
+        <stop offset="0%" stop-color="#3b82f6" stop-opacity="0.95"/>
+        <stop offset="100%" stop-color="#1d4ed8" stop-opacity="0.7"/>
+      </linearGradient>
+      <linearGradient id="chart-grad-u2" x1="0" y1="0" x2="0" y2="1">
+        <stop offset="0%" stop-color="#10b981" stop-opacity="0.95"/>
+        <stop offset="100%" stop-color="#047857" stop-opacity="0.7"/>
+      </linearGradient>
+    </defs>
+  `;
+
+  // Gridlines
+  [0.25, 0.5, 0.75].forEach(ratio => {
+    const y = paddingTop + chartHeight * (1 - ratio);
+    svgHtml += `<line x1="${paddingLeft}" y1="${y}" x2="${width - paddingRight}" y2="${y}" stroke="rgba(255,255,255,0.06)" stroke-dasharray="4 4" stroke-width="1"/>`;
+  });
+
+  // Baseline
+  const baselineY = paddingTop + chartHeight;
+  svgHtml += `<line x1="${paddingLeft}" y1="${baselineY}" x2="${width - paddingRight}" y2="${baselineY}" stroke="rgba(255,255,255,0.12)" stroke-width="1"/>`;
+
+  // Bars & Labels
+  items.forEach((item, idx) => {
+    const groupCenterX = paddingLeft + (idx + 0.5) * stepX;
+    const shortDate = item.date ? item.date.substring(5) : '';
+
+    const val1 = u1 && item.users && item.users[u1.id] ? getValueFn(item.users[u1.id]) : 0;
+    const val2 = u2 && item.users && item.users[u2.id] ? getValueFn(item.users[u2.id]) : 0;
+
+    const h1 = Math.max(val1 > 0 ? 5 : 0, Math.round((val1 / maxVal) * chartHeight));
+    const h2 = Math.max(val2 > 0 ? 5 : 0, Math.round((val2 / maxVal) * chartHeight));
+
+    const x1 = u2 ? groupCenterX - barW - 2 : groupCenterX - barW / 2;
+    const y1 = baselineY - h1;
+
+    const x2 = groupCenterX + 2;
+    const y2 = baselineY - h2;
+
+    if (u1 && val1 > 0) {
+      svgHtml += `<rect class="svg-chart-bar" x="${x1}" y="${y1}" width="${barW}" height="${h1}" rx="3" fill="url(#chart-grad-u1)"><title>${escapeHTML(u1.displayName)}: ${val1} ${unitStr}</title></rect>`;
+    }
+    if (u2 && val2 > 0) {
+      svgHtml += `<rect class="svg-chart-bar" x="${x2}" y="${y2}" width="${barW}" height="${h2}" rx="3" fill="url(#chart-grad-u2)"><title>${escapeHTML(u2.displayName)}: ${val2} ${unitStr}</title></rect>`;
+    }
+
+    svgHtml += `<text x="${groupCenterX}" y="${height - 8}" text-anchor="middle" fill="#94a3b8" font-size="11" font-family="sans-serif">${escapeHTML(shortDate)}</text>`;
+  });
+
+  svgHtml += `</svg>`;
+  return svgHtml;
+}
+
 function renderCustomCharts() {
   const data = state.analyticsData;
   const volChart = document.getElementById('chart-volume');
@@ -2346,70 +2648,33 @@ function renderCustomCharts() {
   tmChart.innerHTML = '';
 
   if (!data || !data.timeline || data.timeline.length === 0) {
-    volChart.innerHTML = '<div class="text-secondary padding-md">No workout logs recorded yet. Complete sessions to populate charts.</div>';
-    tmChart.innerHTML = '<div class="text-secondary padding-md">No cardio logs recorded yet.</div>';
+    volChart.innerHTML = '<div class="text-secondary padding-md text-center">No workout logs recorded yet.</div>';
+    tmChart.innerHTML = '<div class="text-secondary padding-md text-center">No cardio logs recorded yet.</div>';
     return;
   }
 
-  // Draw volume bars (max 6 points)
   const timelineLimit = data.timeline.slice(-6);
-  
-  timelineLimit.forEach(log => {
-    // Volume Graph
-    const vWrapper = document.createElement('div');
-    vWrapper.className = 'chart-bar-wrapper';
+  const u1 = state.usersList[0];
+  const u2 = state.usersList[1];
 
-    const u1 = state.usersList[0];
-    const u2 = state.usersList[1];
+  // Render Volume SVG Chart
+  volChart.innerHTML = buildSvgBarChart({
+    items: timelineLimit,
+    u1,
+    u2,
+    getValueFn: u => u.volume || 0,
+    unitStr: 'kg',
+    defaultMax: 1000
+  });
 
-    const u1Vol = u1 && log.users[u1.id] ? log.users[u1.id].volume : 0;
-    const u2Vol = u2 && log.users[u2.id] ? log.users[u2.id].volume : 0;
-
-    // Calculate height (percent of max volume)
-    const maxVal = Math.max(...timelineLimit.map(l => {
-      const u1V = u1 && l.users[u1.id] ? l.users[u1.id].volume : 0;
-      const u2V = u2 && l.users[u2.id] ? l.users[u2.id].volume : 0;
-      return Math.max(u1V, u2V, 1000);
-    }));
-
-    const u1Pct = Math.max(2, Math.round((u1Vol / maxVal) * 80));
-    const u2Pct = Math.max(2, Math.round((u2Vol / maxVal) * 80));
-
-    const shortDate = log.date.substring(5);
-
-    vWrapper.innerHTML = `
-      <div class="chart-bar-double">
-        ${u1 ? `<div class="chart-bar-u1" style="height: ${u1Pct}%;" title="${escapeHTML(u1.displayName)}: ${u1Vol} kg"></div>` : ''}
-        ${u2 ? `<div class="chart-bar-u2" style="height: ${u2Pct}%;" title="${escapeHTML(u2.displayName)}: ${u2Vol} kg"></div>` : ''}
-      </div>
-      <div class="chart-bar-label">${shortDate}</div>
-    `;
-    volChart.appendChild(vWrapper);
-
-    // Treadmill Distance Graph
-    const tmWrapper = document.createElement('div');
-    tmWrapper.className = 'chart-bar-wrapper';
-
-    const u1Dist = u1 && log.users[u1.id] ? log.users[u1.id].treadmillDistance : 0;
-    const u2Dist = u2 && log.users[u2.id] ? log.users[u2.id].treadmillDistance : 0;
-
-    const maxDist = Math.max(...timelineLimit.map(l => {
-      const u1D = u1 && l.users[u1.id] ? l.users[u1.id].treadmillDistance : 0;
-      const u2D = u2 && l.users[u2.id] ? l.users[u2.id].treadmillDistance : 0;
-      return Math.max(u1D, u2D, 5);
-    }));
-
-    const u1DistPct = Math.max(2, Math.round((u1Dist / maxDist) * 80));
-    const u2DistPct = Math.max(2, Math.round((u2Dist / maxDist) * 80));
-
-    tmWrapper.innerHTML = `
-      <div class="chart-bar-double">
-        ${u1 ? `<div class="chart-bar-u1" style="height: ${u1DistPct}%;" title="${escapeHTML(u1.displayName)}: ${u1Dist} km"></div>` : ''}
-        ${u2 ? `<div class="chart-bar-u2" style="height: ${u2DistPct}%;" title="${escapeHTML(u2.displayName)}: ${u2Dist} km"></div>` : ''}
-      </div>
-      <div class="chart-bar-label">${shortDate}</div>
-    `;
-    tmChart.appendChild(tmWrapper);
+  // Render Treadmill Distance SVG Chart
+  tmChart.innerHTML = buildSvgBarChart({
+    items: timelineLimit,
+    u1,
+    u2,
+    getValueFn: u => u.treadmillDistance || 0,
+    unitStr: 'km',
+    defaultMax: 5
   });
 }
 
