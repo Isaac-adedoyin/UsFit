@@ -609,37 +609,49 @@ app.post('/api/workout/complete', requireAuth, (req, res) => {
     sessionNotes
   } = req.body;
 
-  if (!workoutId || !logs) {
-    return res.status(400).json({ error: 'Workout ID and completion logs are required.' });
+  if (!workoutId) {
+    return res.status(400).json({ error: 'Workout ID is required.' });
   }
 
-  if (!logs[req.session.userId]) {
-    return res.status(400).json({ error: 'Workout logs must belong to the logged-in account.' });
-  }
+  const userId = req.session.userId;
 
-  const ownOnly = collection => collection && collection[req.session.userId] !== undefined
-    ? { [req.session.userId]: collection[req.session.userId] }
-    : {};
+  // Extract user entries with safe key fallback
+  const extractUserEntry = (container) => {
+    if (!container || typeof container !== 'object') return {};
+    if (container[userId] !== undefined) return container[userId];
+    const keys = Object.keys(container);
+    if (keys.length > 0) return container[keys[0]];
+    return {};
+  };
+
+  const userLogs = extractUserEntry(logs);
+  const userTreadmill = extractUserEntry(treadmillData);
+  const userStretch = extractUserEntry(stretchData);
+  const userReadiness = extractUserEntry(readinessScores) || 3;
+  const userDifficulty = extractUserEntry(difficultyScores) || 3;
+
+  const startMs = startTime ? new Date(startTime).getTime() : Date.now() - 3600000;
+  const endMs = endTime ? new Date(endTime).getTime() : Date.now();
 
   // Create clean log structure
   const workoutLog = {
     workoutId,
     scheduledDayName,
-    startTime,
-    endTime,
-    durationMinutes: Math.round((new Date(endTime) - new Date(startTime)) / (1000 * 60)),
-    logs: ownOnly(logs),
-    treadmillData: ownOnly(treadmillData),
-    stretchData: ownOnly(stretchData),
-    readinessScores: ownOnly(readinessScores),
-    difficultyScores: ownOnly(difficultyScores),
-    sessionNotes,
-    completedByUserId: req.session.userId,
+    startTime: new Date(startMs).toISOString(),
+    endTime: new Date(endMs).toISOString(),
+    durationMinutes: Math.max(1, Math.round((endMs - startMs) / (1000 * 60))),
+    logs: { [userId]: userLogs },
+    treadmillData: { [userId]: userTreadmill },
+    stretchData: { [userId]: userStretch },
+    readinessScores: { [userId]: userReadiness },
+    difficultyScores: { [userId]: userDifficulty },
+    sessionNotes: sessionNotes || '',
+    completedByUserId: userId,
     completedByUsername: req.session.displayName
   };
 
   const saved = db.addWorkoutToHistory(workoutLog);
-  db.clearActiveSession(req.session.userId);
+  db.clearActiveSession(userId);
 
   // Update schedule status for today's day to Completed
   const schedule = normalizeSchedule(db.getSchedule());
