@@ -2173,11 +2173,122 @@
     ]
   },
   "schedule": {
-    "currentWeekId": null,
-    "currentWeek": null,
+    "currentWeekId": "2026-W32",
+    "currentWeek": {
+      "weekId": "2026-W32",
+      "days": {
+        "Monday": {
+          "workoutId": "day_1",
+          "status": "Completed",
+          "userStatuses": {
+            "usr_isaac": "Completed",
+            "usr_mary": "Completed"
+          },
+          "rescheduledTo": null
+        },
+        "Wednesday": {
+          "workoutId": "day_2",
+          "status": "Upcoming",
+          "userStatuses": {
+            "usr_isaac": "Upcoming",
+            "usr_mary": "Upcoming"
+          },
+          "rescheduledTo": null
+        },
+        "Friday": {
+          "workoutId": "day_3",
+          "status": "Planned",
+          "userStatuses": {
+            "usr_isaac": "Planned",
+            "usr_mary": "Planned"
+          },
+          "rescheduledTo": null
+        }
+      },
+      "completed": false,
+      "createdAt": "2026-08-03T19:00:00.000Z"
+    },
     "completedWeeks": []
   },
-  "history": [],
+  "history": [
+    {
+      "id": "hist_20260803_day1",
+      "workoutId": "day_1",
+      "scheduledDayName": "Monday",
+      "startTime": "2026-08-03T17:00:00.000Z",
+      "endTime": "2026-08-03T18:40:00.000Z",
+      "durationMinutes": 100,
+      "logs": {
+        "usr_isaac": {
+          "ex_1_1": [
+            { "setIndex": 1, "weight": 30, "reps": 10, "completed": true, "difficulty": 3, "pain": 0, "notes": "" },
+            { "setIndex": 2, "weight": 30, "reps": 10, "completed": true, "difficulty": 3, "pain": 0, "notes": "" },
+            { "setIndex": 3, "weight": 30, "reps": 10, "completed": true, "difficulty": 3, "pain": 0, "notes": "" }
+          ],
+          "ex_1_2": [
+            { "setIndex": 1, "weight": 15, "reps": 10, "completed": true, "difficulty": 3, "pain": 0, "notes": "" },
+            { "setIndex": 2, "weight": 15, "reps": 10, "completed": true, "difficulty": 3, "pain": 0, "notes": "" },
+            { "setIndex": 3, "weight": 15, "reps": 10, "completed": true, "difficulty": 3, "pain": 0, "notes": "" }
+          ],
+          "ex_1_3": [
+            { "setIndex": 1, "weight": 4, "reps": 15, "completed": true, "difficulty": 3, "pain": 0, "notes": "" },
+            { "setIndex": 2, "weight": 4, "reps": 15, "completed": true, "difficulty": 3, "pain": 0, "notes": "" },
+            { "setIndex": 3, "weight": 4, "reps": 15, "completed": true, "difficulty": 3, "pain": 0, "notes": "" }
+          ],
+          "ex_1_4": [
+            { "setIndex": 1, "weight": 10, "reps": 12, "completed": true, "difficulty": 3, "pain": 0, "notes": "" },
+            { "setIndex": 2, "weight": 10, "reps": 12, "completed": true, "difficulty": 3, "pain": 0, "notes": "" },
+            { "setIndex": 3, "weight": 10, "reps": 12, "completed": true, "difficulty": 3, "pain": 0, "notes": "" }
+          ],
+          "ex_1_5": [
+            { "setIndex": 1, "weight": 15, "reps": 10, "completed": true, "difficulty": 3, "pain": 0, "notes": "" },
+            { "setIndex": 2, "weight": 15, "reps": 10, "completed": true, "difficulty": 3, "pain": 0, "notes": "" },
+            { "setIndex": 3, "weight": 15, "reps": 10, "completed": true, "difficulty": 3, "pain": 0, "notes": "" }
+          ],
+          "ex_1_6": [
+            { "setIndex": 1, "weight": 8, "reps": 12, "completed": true, "difficulty": 3, "pain": 0, "notes": "" },
+            { "setIndex": 2, "weight": 8, "reps": 12, "completed": true, "difficulty": 3, "pain": 0, "notes": "" },
+            { "setIndex": 3, "weight": 8, "reps": 12, "completed": true, "difficulty": 3, "pain": 0, "notes": "" }
+          ],
+          "ex_1_7": [
+            { "setIndex": 1, "weight": 0, "reps": 12, "completed": true, "difficulty": 3, "pain": 0, "notes": "" },
+            { "setIndex": 2, "weight": 0, "reps": 12, "completed": true, "difficulty": 3, "pain": 0, "notes": "" },
+            { "setIndex": 3, "weight": 0, "reps": 12, "completed": true, "difficulty": 3, "pain": 0, "notes": "" }
+          ],
+          "ex_1_8": [
+            { "setIndex": 1, "weight": 0, "reps": 35, "completed": true, "difficulty": 3, "pain": 0, "notes": "" },
+            { "setIndex": 2, "weight": 0, "reps": 35, "completed": true, "difficulty": 3, "pain": 0, "notes": "" }
+          ]
+        },
+        "usr_mary": {
+          "ex_f_1_1": [
+            { "setIndex": 1, "weight": 15, "reps": 10, "completed": true, "difficulty": 3, "pain": 0, "notes": "" },
+            { "setIndex": 2, "weight": 15, "reps": 10, "completed": true, "difficulty": 3, "pain": 0, "notes": "" },
+            { "setIndex": 3, "weight": 15, "reps": 10, "completed": true, "difficulty": 3, "pain": 0, "notes": "" }
+          ]
+        }
+      },
+      "treadmillData": {
+        "usr_isaac": { "duration": 60, "distance": 4.8, "avgSpeed": 5.2, "maxSpeed": 6.0, "incline": 2, "hr": 120, "calories": 350, "difficulty": 3, "notes": "Great warm-up" },
+        "usr_mary": { "duration": 60, "distance": 4.2, "avgSpeed": 4.8, "maxSpeed": 5.5, "incline": 1.5, "hr": 110, "calories": 280, "difficulty": 3, "notes": "Smooth walking" }
+      },
+      "stretchData": {
+        "usr_isaac": { "completed": true, "skippedReason": "" },
+        "usr_mary": { "completed": true, "skippedReason": "" }
+      },
+      "readinessScores": {
+        "usr_isaac": 4,
+        "usr_mary": 4
+      },
+      "difficultyScores": {
+        "usr_isaac": 3,
+        "usr_mary": 3
+      },
+      "sessionNotes": "Day 1 — Build the Front Frame completed successfully.",
+      "completedByUserId": "usr_isaac",
+      "completedByUsername": "Isaac"
+    }
+  ],
   "activeSessions": {},
   "measurements": [],
   "changelog": []
