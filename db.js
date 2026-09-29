@@ -2,8 +2,9 @@ const fs = require('fs');
 const path = require('path');
 
 const os = require('os');
+const trainingPlan = require('./training-plan');
 
-const DB_DIR = path.join(__dirname, 'data');
+const DB_DIR = process.env.USFIT_DATA_DIR || path.join(__dirname, 'data');
 const DB_FILE = path.join(DB_DIR, 'database.json');
 
 let memoryDb = null;
@@ -835,6 +836,10 @@ function getDefaultSeedData() {
     changelog: []
   };
 
+  const baseMale = seedData.program_male;
+  const baseFemale = seedData.program_female;
+  seedData.program_male = trainingPlan.buildProgram(baseMale, baseFemale, 'male');
+  seedData.program_female = trainingPlan.buildProgram(baseMale, baseFemale, 'female');
   return seedData;
 }
 
@@ -1053,7 +1058,7 @@ function applyVerifiedMedia(program) {
   const result = JSON.parse(JSON.stringify(program));
   result.days.forEach(day => {
     (day.exercises || []).forEach(exercise => {
-      if (Object.prototype.hasOwnProperty.call(verifiedMediaByExerciseName, exercise.name)) {
+      if (!exercise.source && Object.prototype.hasOwnProperty.call(verifiedMediaByExerciseName, exercise.name)) {
         exercise.media = verifiedMediaByExerciseName[exercise.name];
       }
     });
@@ -1147,6 +1152,27 @@ const db = {
     });
     writeAtomic(data);
     return data[g];
+  },
+
+  // Explicit one-time install. Keep history, accounts, schedules and the old plans.
+  installGoalPlans: () => {
+    const data = readDb();
+    if (data.program_male?.planVersion === trainingPlan.VERSION && data.program_female?.planVersion === trainingPlan.VERSION) return false;
+    if (Object.keys(data.activeSessions || {}).length) throw new Error('Finish the active workout before installing the new plans.');
+    data.previousTrainingPrograms = { male: data.program_male, female: data.program_female, savedAt: new Date().toISOString() };
+    // Preserve historical labels before day order and exercise selection change.
+    for (const workout of data.history || []) {
+      const owner = Object.values(data.users).find(user => workout.logs?.[user.id]);
+      const old = owner?.gender === 'female' ? data.program_female : data.program_male;
+      workout.workoutName ||= old?.days.find(day => day.id === workout.workoutId)?.name;
+      workout.exerciseNames ||= Object.fromEntries((old?.days || []).flatMap(day => day.exercises.map(ex => [ex.id, ex.name])));
+    }
+    const defaults = getDefaultSeedData();
+    data.program_male = defaults.program_male;
+    data.program_female = defaults.program_female;
+    data.changelog.push({ timestamp: new Date().toISOString(), username: 'UsFit', action: 'Installed personal three-day programs with source-linked guidance; previous programs preserved.' });
+    writeAtomic(data);
+    return true;
   },
 
   // Schedules

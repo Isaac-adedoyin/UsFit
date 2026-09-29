@@ -1,0 +1,11 @@
+require('dotenv').config();
+const fs = require('node:fs');
+const path = require('node:path');
+if (process.env.KV_REST_API_URL) throw new Error('This installer is for local persistent storage. Remote deployments need a coordinated migration.');
+const db = require('../db');
+const dir = process.env.USFIT_DATA_DIR || path.join(__dirname, '..', 'data');
+const backup = path.join(dir, `before-goal-plans-${Date.now()}.bak`);
+fs.mkdirSync(dir, { recursive: true });
+fs.writeFileSync(backup, JSON.stringify(db.read(), null, 2), { flag: 'wx' });
+console.log('Backup saved:', backup);
+console.log(db.installGoalPlans() ? 'Both personal training plans installed. History and accounts preserved.' : 'Plans already current. No changes needed.');

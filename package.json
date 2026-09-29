@@ -5,7 +5,8 @@
   "main": "server.js",
   "scripts": {
     "start": "node server.js",
-    "dev": "node server.js"
+    "dev": "node server.js",
+    "test": "node test.js && node --test tests/*.test.js"
   },
   "dependencies": {
     "cookie-session": "^2.1.1",

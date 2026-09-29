@@ -20,6 +20,7 @@
   <link rel="apple-touch-icon" href="https://cdn-icons-png.flaticon.com/512/2964/2964514.png">
 </head>
 <body class="dark-theme">
+  <div id="connection-status" class="connection-status hidden" role="status">You’re offline. Active workout edits stay on this device until you reconnect.</div>
   <!-- Audio element for rest timers -->
   <audio id="timer-sound" src="data:audio/wav;base64,UklGRigAAABXQVZFZm10IBAAAAABAAEARKwAAIhYAQACABAAZGF0YQQAAAAAAA==\"></audio>
 
@@ -96,6 +97,7 @@
             
           </div>
 
+          <div class="form-control hidden" id="passphrase-field"><label for="auth-passphrase">Our private passphrase</label><input type="password" id="auth-passphrase" autocomplete="current-password" placeholder="Shared by just the two of you"></div>
           <div id="auth-error-msg" class="error-text hidden"></div>
 
           <button type="submit" id="auth-submit-btn" class="btn btn-accent btn-full">Sign In</button>
@@ -110,10 +112,13 @@
     <!-- 2. DASHBOARD VIEW -->
     <section id="dashboard-view" class="view-container hidden">
       <div class="dashboard-header">
-        <h1 class="view-title">Gym Dashboard</h1>
+        <h1 class="view-title">Your training, together</h1>
         <p class="text-secondary" id="dashboard-date-str">Monday, July 20, 2026</p>
       </div>
 
+      <div class="couple-intro"><span class="eyebrow">OUR LITTLE TRAINING CLUB</span><p class="text-secondary">Two people. Your own pace. Stronger together.</p></div>
+      <div id="couple-overview" class="couple-overview"></div>
+      <div id="personal-plan-overview" class="plan-overview"></div>
       <!-- Weekly Progress Summary Card -->
       <div class="week-progress-card glass-panel gradient-border">
         <div class="progress-details">
@@ -267,6 +272,7 @@
 
     <!-- 4. ACTIVE WORKOUT VIEW -->
     <section id="workout-view" class="view-container hidden">
+      <p id="workout-save-status" class="workout-save-status" role="status">Your workout saves automatically.</p>
       <!-- Top Wizard Tracker -->
       <div class="workout-wizard-steps">
         <div class="step-indicator active" id="wizard-step-treadmill">Warm-Up</div>
@@ -278,11 +284,11 @@
       <!-- SECTION A: TREADMILL WARM-UP (60 mins) -->
       <div id="phase-treadmill" class="workout-phase-container">
         <div class="phase-header">
-          <h2>Treadmill Warm-Up (60 mins)</h2>
+          <h2>Easy warm-up</h2>
         </div>
 
         <div class="timer-display-box glass-panel">
-          <div class="giant-timer" id="treadmill-timer-clock">60:00</div>
+          <div class="giant-timer" id="treadmill-timer-clock">08:00</div>
           <div class="stage-label" id="treadmill-stage-name">Stage 1: Easy Walking</div>
           
           <div class="treadmill-media-container margin-top-sm" id="treadmill-media-container" style="max-height: 150px; display: flex; justify-content: center; align-items: center; overflow: hidden;">
@@ -402,6 +408,7 @@
               </div>
             </details>
 
+            <div id="exercise-coach-note" class="exercise-coach-note"></div>
             <div class="exercise-actions-buttons margin-top-sm">
               <button class="btn btn-secondary btn-sm" id="swap-exercise-btn">Swap / Replace</button>
               <button class="btn btn-secondary btn-sm" id="skip-exercise-btn">Skip Exercise</button>
@@ -412,7 +419,7 @@
           <div class="exercise-logging-card glass-panel">
             <!-- Giant Target Goal Banner -->
             <div class="workout-goal-banner" id="workout-goal-banner">
-              Target: <span id="workout-goal-sets">3</span> sets × <span id="workout-goal-reps">8-12</span> reps
+              Target: <span id="workout-goal-sets">3</span> sets × <span id="workout-goal-reps">8-12</span> <span id="workout-goal-unit">reps</span>
             </div>
 
             <!-- Tab Switcher for Users -->
@@ -473,10 +480,11 @@
         </div>
       </div>
 
+      <dialog id="exercise-swap-dialog" class="swap-dialog"><form method="dialog"><button class="btn btn-secondary btn-sm" aria-label="Close exercise choices">Close</button></form><h2>Choose your alternative</h2><p class="text-secondary">Guidance and logging will update together. Start light on unfamiliar equipment.</p><div id="exercise-swap-choices"></div></dialog>
       <!-- SECTION C: GUIDED STRETCHING -->
       <div id="phase-stretching" class="workout-phase-container hidden">
         <div class="phase-header">
-          <h2>Guided Stretching (10 mins)</h2>
+          <h2>Gentle cool-down</h2>
         </div>
 
         <div class="stretching-grid margin-top-md">
@@ -523,7 +531,7 @@
           <div class="summary-stats-grid margin-top-md">
             <div class="stat-box glass-panel">
               <h3>Workout Duration</h3>
-              <p class="stat-val" id="summary-duration">2h 40m</p>
+              <p class="stat-val" id="summary-duration">—</p>
             </div>
             <div class="stat-box glass-panel">
               <h3>Total Working Sets</h3>
@@ -583,7 +591,7 @@
       <div class="dashboard-header flex-header">
         <div>
           <h1 class="view-title">Workout Program</h1>
-          <p class="text-secondary font-xs">Customize exercises, set counts, and rep targets.</p>
+          <p class="text-secondary font-xs">Your three-day plan. Review the session below, then adjust only what you need.</p>
         </div>
         <div class="header-actions">
           <button id="reset-program-btn" class="btn btn-secondary">Restore Default</button>
@@ -591,6 +599,7 @@
         </div>
       </div>
 
+      <div id="program-plan-overview" class="plan-overview"></div>
       <div class="program-editor-tabs margin-top-md">
         <button class="tab-btn active" data-day-id="day_1">Day 1: Front Frame</button>
         <button class="tab-btn" data-day-id="day_2">Day 2: Monster Back</button>
@@ -646,6 +655,11 @@
         </div>
       </div>
 
+      <div class="glass-panel history-panel margin-top-md">
+        <div class="flex-header"><div><h3>Our workout journal</h3><p class="text-secondary font-xs" id="history-count">Your sessions, all in one place.</p></div></div>
+        <div class="history-filters margin-top-sm"><input id="history-search" type="search" placeholder="Search workouts or notes…" aria-label="Search workout history"><select id="history-person" aria-label="Filter history by person"><option value="all">Both of us</option></select></div>
+        <div id="workout-history-list" aria-live="polite"></div>
+      </div>
       <!-- Personal Records (PR) Panel -->
       <div class="pr-card glass-panel margin-top-md">
         <h3>Personal Records</h3>
@@ -815,7 +829,7 @@
   </main>
 
   <footer class="footer">
-    <p class="text-secondary">&copy; 2026 UsFit. Developed with care for couples training.</p>
+    <p class="text-secondary">&copy; 2026 UsFit. Just the two of us. One stronger tomorrow.</p>
   </footer>
 
   <script src="app.js"></script>

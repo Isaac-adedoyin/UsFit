@@ -1,12 +1,14 @@
 const fs = require('fs');
 const path = require('path');
+const os = require('os');
+process.env.USFIT_DATA_DIR = fs.mkdtempSync(path.join(os.tmpdir(), 'usfit-test-'));
 const db = require('./db');
 const { getProgressionRecommendation, accountGenders } = require('./server');
 
 // Run automatic tests
 console.log('--- Starting UsFit Backend Test Suite ---');
 
-const DB_DIR = path.join(__dirname, 'data');
+const DB_DIR = process.env.USFIT_DATA_DIR;
 const DB_FILE = path.join(DB_DIR, 'database.json');
 const DB_BACKUP = path.join(DB_DIR, 'database.json.testbackup');
 
@@ -231,7 +233,7 @@ try {
 } catch (err) {
   console.error('\n❌ TEST SUITE ENCOUNTERED A FAILURE:');
   console.error(err);
-  process.exit(1);
+  process.exitCode = 1;
 } finally {
   // Restore original database
   if (fs.existsSync(DB_FILE)) {

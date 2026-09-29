@@ -15,6 +15,53 @@ const state = {
 
 let activeWorkoutSaveTimer = null;
 
+// A shared browser cookie can change in another tab. Never write that tab's
+// workout under a different member's account.
+const nativeFetch = window.fetch.bind(window);
+window.fetch = async function(input, options = {}) {
+  const url = new URL(typeof input === 'string' ? input : input.url, location.href);
+  const expectedUser = state.user?.id;
+  const guarded = url.origin === location.origin && url.pathname.startsWith('/api/') && !url.pathname.startsWith('/api/auth/');
+  if (guarded && expectedUser) {
+    const headers = new Headers(options.headers || (input instanceof Request ? input.headers : undefined));
+    headers.set('X-Usfit-User', expectedUser);
+    options = { ...options, headers };
+  }
+  const response = await nativeFetch(input, options);
+  if (guarded && expectedUser && response.status === 409) {
+    const error = await response.clone().json().catch(() => ({}));
+    if (error.code === 'ACCOUNT_CHANGED') {
+      clearInterval(activeWorkoutSaveTimer);
+      stopAllActiveTimers();
+      state.activeWorkout = null;
+      state.program = null;
+      state.user = null;
+      navigate('login');
+      const message = document.getElementById('auth-error-msg');
+      message.textContent = error.error + ' Your device draft is still saved for its owner.';
+      message.classList.remove('hidden');
+      throw new Error(error.error);
+    }
+  }
+  if (guarded && expectedUser !== state.user?.id) throw new Error('Account changed while loading.');
+  return response;
+};
+function clearMemberState() {
+  clearInterval(activeWorkoutSaveTimer);
+  clearTimeout(draftInputTimer);
+  stopAllActiveTimers();
+  state.activeWorkout = null;
+  state.program = null;
+  state.schedule = null;
+  state.analyticsData = null;
+}
+function ownsWorkout(workout, userId = state.user?.id) {
+  return Boolean(workout && userId && (!workout.ownerUserId || workout.ownerUserId === userId) &&
+    (!workout.activeLoggerUserId || workout.activeLoggerUserId === userId) &&
+    Object.keys(workout.logs || {}).every(id => id === userId));
+}
+
+
 // --- SCREEN WAKE LOCK & BACKGROUND TIMER SUBSYSTEM ---
 let wakeLockSentinel = null;
 
@@ -40,6 +87,7 @@ function releaseWakeLock() {
 
 // Background Web Worker Ticker
 let timerWorker = null;
+let fallbackTimer = null;
 const timerListeners = new Set();
 
 function getTimerWorker() {
@@ -79,6 +127,9 @@ function addTimerListener(callback) {
   requestWakeLock();
   const worker = getTimerWorker();
   if (worker) worker.postMessage('start');
+  else if (!fallbackTimer) fallbackTimer = setInterval(() => {
+    timerListeners.forEach(callback => { try { callback(); } catch (error) { console.error(error); } });
+  }, 1000);
 }
 
 function removeTimerListener(callback) {
@@ -86,6 +137,8 @@ function removeTimerListener(callback) {
   if (timerListeners.size === 0) {
     const worker = getTimerWorker();
     if (worker) worker.postMessage('stop');
+    clearInterval(fallbackTimer);
+    fallbackTimer = null;
     releaseWakeLock();
   }
 }
@@ -96,6 +149,8 @@ function stopAllActiveTimers() {
   if (state.workTimer) { clearInterval(state.workTimer); state.workTimer = null; }
   if (state.stretchTimer) { clearInterval(state.stretchTimer); state.stretchTimer = null; }
   timerListeners.clear();
+  clearInterval(fallbackTimer);
+  fallbackTimer = null;
   if (timerWorker) timerWorker.postMessage('stop');
   releaseWakeLock();
 }
@@ -136,29 +191,39 @@ async function loadActiveWorkoutSession() {
     const res = await fetch('/api/workout/active');
     if (!res.ok) return;
     const data = await res.json();
-    if (data.activeWorkout) {
-      state.activeWorkout = data.activeWorkout;
+    if (data.activeWorkout && !ownsWorkout(data.activeWorkout)) data.activeWorkout = null;
+    const local = readWorkoutDraft();
+    if (data.activeWorkout || local) {
+      state.activeWorkout = local && (!data.activeWorkout || new Date(local.savedAt || 0).getTime() > new Date(data.activeWorkout.savedAt || 0).getTime()) ? local : data.activeWorkout;
       // A recovered workout resumes paused so time is never lost while the app was closed.
       state.activeWorkout.treadmillTimerActive = false;
       state.activeWorkout.stretchTimerActive = false;
     }
   } catch (err) {
+    state.activeWorkout = readWorkoutDraft();
     console.error('Failed to restore active workout:', err);
   }
 }
 
 async function persistActiveWorkoutSession({ keepalive = false } = {}) {
-  if (!state.activeWorkout || !state.user) return;
+  if (!state.activeWorkout || !state.user || !ownsWorkout(state.activeWorkout)) return;
   if (state.activeWorkout.phase === 'strength') saveCurrentLiftsToState();
+  if (state.activeWorkout.phase === 'summary') state.activeWorkout.sessionNotes = document.getElementById('session-summary-notes').value;
 
+  state.activeWorkout.savedAt = Date.now();
+  try { localStorage.setItem(workoutDraftKey(), JSON.stringify(state.activeWorkout)); } catch (_) {}
+  setSaveStatus('Saved on this device · syncing…');
   try {
-    await fetch('/api/workout/active', {
+    const response = await fetch('/api/workout/active', {
       method: 'POST',
       headers: { 'Content-Type': 'application/json' },
       body: JSON.stringify({ activeWorkout: state.activeWorkout }),
       keepalive
     });
+    if (!response.ok) throw new Error('Sync unavailable');
+    setSaveStatus('Workout saved');
   } catch (err) {
+    setSaveStatus('Saved on this device · reconnect to sync');
     if (!keepalive) console.error('Failed to save active workout:', err);
   }
 }
@@ -225,6 +290,7 @@ function playBeep(freq = 800, duration = 0.3) {
 // Startup Initialization
 document.addEventListener('DOMContentLoaded', async () => {
   setupEventListeners();
+  checkEmailRegistrationStatus();
   if ('serviceWorker' in navigator) {
     navigator.serviceWorker.register('/sw.js').catch(err => console.warn('Service Worker registration:', err));
   }
@@ -237,6 +303,7 @@ async function checkSession() {
     const res = await fetch('/api/auth/me');
     const data = await res.json();
     if (data.user) {
+      clearMemberState();
       state.user = data.user;
       setupUserSessionUI();
       // Load base configs
@@ -254,6 +321,7 @@ async function checkSession() {
 
 // Router & Views Navigator
 function navigate(viewId) {
+  if (state.activeView === 'workout' && state.activeWorkout) persistActiveWorkoutSession();
   state.activeView = viewId;
   
   if (viewId !== 'workout' && state.exerciseVisualInterval) {
@@ -294,7 +362,7 @@ function navigate(viewId) {
   if (viewId === 'dashboard') loadDashboard();
   if (viewId === 'planner') loadPlanner();
   if (viewId === 'program') loadProgramEditor();
-  if (viewId === 'progress') loadProgressReport();
+  if (viewId === 'progress') { loadProgressReport(); loadWorkoutHistory(); }
   if (viewId === 'settings') loadSettings();
 }
 
@@ -329,6 +397,7 @@ async function loadUsersList() {
 async function loadProgram() {
   try {
     const res = await fetch('/api/program');
+    if (!res.ok) throw new Error('Could not load your personal program.');
     state.program = await res.json();
   } catch (e) {
     console.error('Failed to load workout program:', e);
@@ -458,46 +527,12 @@ function resetAuthFormState({ clearEmail = false } = {}) {
 }
 
 async function checkEmailRegistrationStatus() {
-  const emailVal = document.getElementById('auth-email').value.trim().toLowerCase();
-  if (!emailVal || emailVal === lastCheckedEmail) return;
-  lastCheckedEmail = emailVal;
-
   try {
-    const res = await fetch('/api/auth/config');
-    const data = await res.json();
-    const config = data.status.find(s => s.email === emailVal);
-    
-    const displayNameField = document.getElementById('displayName-field-container');
-    const submitBtn = document.getElementById('auth-submit-btn');
-    const setupAlert = document.getElementById('register-setup-alert');
-
-    if (config) {
-      if (!config.isRegistered) {
-        // Show setup inputs
-        displayNameField.style.display = 'block';
-        document.getElementById('auth-name').required = true;
-        submitBtn.textContent = 'Register & Create Profile';
-        setupAlert.classList.remove('hidden');
-        document.getElementById('login-subtitle').textContent = 'Enter your name to set up your profile.';
-      } else {
-        // Regular Login
-        displayNameField.style.display = 'none';
-        document.getElementById('auth-name').required = false;
-        submitBtn.textContent = 'Sign In';
-        setupAlert.classList.add('hidden');
-        document.getElementById('login-subtitle').textContent = 'Sign in to plan & track workouts together';
-      }
-      document.getElementById('auth-error-msg').classList.add('hidden');
-    } else {
-      // Email not in approved list
-      displayNameField.style.display = 'none';
-      document.getElementById('auth-name').required = false;
-      submitBtn.textContent = 'Sign In';
-      setupAlert.classList.add('hidden');
-    }
-  } catch (e) {
-    console.error('Failed to check auth configuration:', e);
-  }
+    const response = await fetch('/api/auth/config');
+    const config = await response.json();
+    document.getElementById('passphrase-field').classList.toggle('hidden', !config.passphraseRequired);
+    document.getElementById('auth-passphrase').required = config.passphraseRequired;
+  } catch (_) {}
 }
 
 async function handleAuthSubmit(e) {
@@ -514,20 +549,22 @@ async function handleAuthSubmit(e) {
     let res = await fetch('/api/auth/login', {
       method: 'POST',
       headers: { 'Content-Type': 'application/json' },
-      body: JSON.stringify({ email })
+      body: JSON.stringify({ email, passphrase: document.getElementById('auth-passphrase').value })
     });
     let data = await res.json();
 
     if (res.ok && data.needsRegistration) {
       if (!displayNameField.value.trim()) {
         lastCheckedEmail = '';
-        await checkEmailRegistrationStatus();
+        document.getElementById('displayName-field-container').style.display = 'block';
+        displayNameField.required = true;
+        displayNameField.focus();
         throw new Error('Enter your display name to finish creating the account.');
       }
       res = await fetch('/api/auth/register', {
         method: 'POST',
         headers: { 'Content-Type': 'application/json' },
-        body: JSON.stringify({ email, displayName: displayNameField.value })
+        body: JSON.stringify({ email, displayName: displayNameField.value, passphrase: document.getElementById('auth-passphrase').value })
       });
       data = await res.json();
     }
@@ -536,6 +573,7 @@ async function handleAuthSubmit(e) {
       throw new Error(data.error || 'Authentication failed');
     }
 
+    clearMemberState();
     state.user = data.user;
     setupUserSessionUI();
     
@@ -554,8 +592,8 @@ async function handleLogout() {
   try {
     await persistActiveWorkoutSession();
     await fetch('/api/auth/logout', { method: 'POST' });
+    clearMemberState();
     state.user = null;
-    state.activeWorkout = null;
     clearInterval(activeWorkoutSaveTimer);
     stopAllActiveTimers();
     resetAuthFormState({ clearEmail: true });
@@ -840,6 +878,8 @@ function checkSessionUnlockStatus(scheduledDay) {
 
 // Dashboard rendering
 function loadDashboard() {
+  loadCoupleOverview();
+  renderPlanOverview();
   // Update Date
   const options = { weekday: 'long', year: 'numeric', month: 'long', day: 'numeric' };
   document.getElementById('dashboard-date-str').textContent = new Date().toLocaleDateString(undefined, options);
@@ -931,7 +971,7 @@ function loadDashboard() {
           </div>
           <h3 class="margin-top-xs">${escapeHTML(workoutObj.name)}</h3>
           <p class="text-secondary font-sm"><strong>Focus:</strong> ${escapeHTML(workoutObj.focus)}</p>
-          <p class="text-secondary font-sm"><strong>Est. Duration:</strong> 2h 40m | Exercises: ${workoutObj.exercises.length}</p>
+          <p class="text-secondary font-sm"><strong>Est. Duration:</strong> ${escapeHTML(workoutObj.estimatedMinutes || '75–110')} min · Up to 2 hours | Exercises: ${workoutObj.exercises.length}</p>
           ${!unlockStatus.isUnlocked ? `<p class="font-xs margin-top-xs" style="color: #f59e0b;">⏳ <strong>Session Locked:</strong> ${escapeHTML(unlockStatus.reason)}.</p>` : ''}
         </div>
         <div>
@@ -1074,12 +1114,14 @@ async function startActiveWorkoutSession(e) {
   const workoutTemplate = state.program.days.find(d => d.id === workoutId);
   
   state.activeWorkout = {
+    ownerUserId: state.user.id,
     workoutId,
     scheduledDayName: dayName,
     startTime: new Date().toISOString(),
     endTime: null,
     phase: 'treadmill', // treadmill, strength, stretching, summary
-    treadmillTimer: 60 * 60, // 60 minutes in seconds
+    workoutSnapshot: JSON.parse(JSON.stringify(workoutTemplate)),
+    treadmillTimer: workoutTemplate.treadmill.reduce((sum, stage) => sum + stage.duration, 0) * 60,
     treadmillTimerActive: true,
     treadmillStageIdx: 0,
     currentExerciseIdx: 0,
@@ -1162,9 +1204,9 @@ function initActiveWorkoutWizard() {
 
 // ----------------- PHASE 1: TREADMILL WARM-UP -----------------
 function renderTreadmillStagesList() {
-  const workoutTemplate = state.program.days.find(d => d.id === state.activeWorkout.workoutId);
+  const workoutTemplate = getSessionDay(state.activeWorkout.workoutId);
   const stagesList = document.getElementById('treadmill-stages-list');
-  stagesList.innerHTML = '<h4>Warm-up Progress (60 mins)</h4>';
+  stagesList.innerHTML = '<h4>Easy warm-up · save your energy for lifting</h4>';
 
   workoutTemplate.treadmill.forEach((stage, idx) => {
     const row = document.createElement('div');
@@ -1178,7 +1220,7 @@ function renderTreadmillStagesList() {
       <span class="stage-meta">
         <span>Target speed: ${stage.speed} km/h</span>
         <span>Target incline: ${stage.incline}%</span>
-        <span>Target HR: ${stage.hrTarget} bpm</span>
+        <span>${stage.hrTarget ? `Target HR: ${stage.hrTarget} bpm` : 'You should be able to talk comfortably'}</span>
       </span>
     `;
     stagesList.appendChild(row);
@@ -1209,7 +1251,7 @@ function startTreadmillCountdown() {
   requestNotificationPermission();
   const displayClock = document.getElementById('treadmill-timer-clock');
   const stageLabel = document.getElementById('treadmill-stage-name');
-  const workoutTemplate = state.program.days.find(d => d.id === state.activeWorkout.workoutId);
+  const workoutTemplate = getSessionDay(state.activeWorkout.workoutId);
 
   let targetEndTime = Date.now() + state.activeWorkout.treadmillTimer * 1000;
 
@@ -1220,7 +1262,7 @@ function startTreadmillCountdown() {
     displayClock.textContent = `${m.toString().padStart(2, '0')}:${s.toString().padStart(2, '0')}`;
 
     // Determine current stage based on elapsed time (60 mins countdown)
-    const elapsedMinutes = 60 - Math.ceil(seconds / 60);
+    const elapsedMinutes = workoutTemplate.treadmill.reduce((sum, stage) => sum + stage.duration, 0) - Math.ceil(seconds / 60);
     
     // Calculate stages boundaries
     let accumulator = 0;
@@ -1246,9 +1288,9 @@ function startTreadmillCountdown() {
 
     const currentStage = workoutTemplate.treadmill[state.activeWorkout.treadmillStageIdx];
     
-    // Suggest starting soft and scaling treadmill targets after 1 month
+    // A comfortable warm-up, not a fixed heart-rate prescription.
     const cardioTargets = getCardioStageSuggestions(currentStage);
-    stageLabel.innerHTML = `Stage ${currentStage.stage}: ${escapeHTML(currentStage.name)}<br><span class="treadmill-target-glow" style="font-size: 0.95rem; color: var(--accent-color); font-weight: 500; display: block; margin-top: 4px;">Target: Speed ${cardioTargets.speed} km/h | Incline ${cardioTargets.incline}%</span>`;
+    stageLabel.innerHTML = `Stage ${currentStage.stage}: ${escapeHTML(currentStage.name)}<br><span class="treadmill-target-glow" style="font-size: 0.95rem; color: var(--accent-color); font-weight: 500; display: block; margin-top: 4px;">Suggested: ${cardioTargets.speed} km/h · ${cardioTargets.incline}% incline · adjust to an easy pace</span>`;
 
     // Render Treadmill Visual guide loop
     const treadmillMediaContainer = document.getElementById('treadmill-media-container');
@@ -1373,6 +1415,7 @@ function saveTreadmillLogsAndProceed() {
 
 // ----------------- PHASE 2: WORKING SETS -----------------
 function renderStrengthExercisePanel() {
+  if (state.exerciseTimerCleanup) state.exerciseTimerCleanup();
   const w = state.activeWorkout;
   
   // Clear active intervals from previous exercises to prevent overlaps
@@ -1385,7 +1428,7 @@ function renderStrengthExercisePanel() {
     state.workTimer = null;
   }
 
-  const workoutTemplate = state.program.days.find(d => d.id === w.workoutId);
+  const workoutTemplate = getSessionDay(w.workoutId);
   const exercise = workoutTemplate.exercises[w.currentExerciseIdx];
 
   // Set Indicators
@@ -1395,7 +1438,8 @@ function renderStrengthExercisePanel() {
 
   // Giant Goal Banner Targets
   document.getElementById('workout-goal-sets').textContent = exercise.setsCount;
-  document.getElementById('workout-goal-reps').textContent = `${exercise.repRangeMin}-${exercise.repRangeMax}`;
+  document.getElementById('workout-goal-reps').textContent = `${exercise.repRangeMin}–${exercise.repRangeMax}`;
+  document.getElementById('workout-goal-unit').textContent = exercise.isTimed ? (exercise.perSide ? 'sec / side' : 'seconds') : (exercise.perSide ? 'reps / side' : 'reps');
 
   // Instructions
   document.getElementById('workout-ex-setup').textContent = exercise.instructions.setup;
@@ -1405,8 +1449,10 @@ function renderStrengthExercisePanel() {
   document.getElementById('workout-ex-safety').textContent = exercise.instructions.safety;
   document.getElementById('workout-ex-cues').textContent = exercise.instructions.cues;
 
+  renderWorkoutGuide(exercise, workoutTemplate);
   // Render Visual (Support PNG visual fallback)
   renderExerciseSVGVisual(exercise.name, document.getElementById('workout-ex-media'), exercise.media, {
+    source: exercise.source,
     targetMuscles: exercise.targetMuscles,
     setup: exercise.instructions && exercise.instructions.setup,
     movement: exercise.instructions && exercise.instructions.movement,
@@ -1446,7 +1492,7 @@ function renderStrengthExercisePanel() {
 
   // Alternative Swap Button
   const swapBtn = document.getElementById('swap-exercise-btn');
-  if (exercise.alternatives && exercise.alternatives.length > 0) {
+  if (exercise.alternativeExercises && exercise.alternativeExercises.length > 0) {
     swapBtn.style.display = 'inline-block';
     swapBtn.onclick = () => triggerAlternativeSwap(exercise);
   } else {
@@ -1603,6 +1649,8 @@ function renderStrengthExercisePanel() {
     removeTimerListener(onRestTick);
   }
 
+  state.exerciseTimerCleanup = () => { stopWorkTimer(); stopRestTimer(); };
+
   function startRestTimer() {
     stopRestTimer();
     restTargetEnd = Date.now() + restSecondsRemaining * 1000;
@@ -1686,28 +1734,45 @@ function updateWorkTimerClock(sec) {
 }
 
 function triggerAlternativeSwap(currentExercise) {
-  const selectHtml = currentExercise.alternatives.map(alt => `<option value="${alt}">${alt}</option>`).join('');
-  const choice = prompt(`Select an alternative exercise for ${currentExercise.name}:\n\nAvailable:\n${currentExercise.alternatives.join(', ')}\n\nEnter exact name to swap:`);
-  
-  if (choice && currentExercise.alternatives.includes(choice)) {
-    // Modify current active program session exercise name
-    const workoutTemplate = state.program.days.find(d => d.id === state.activeWorkout.workoutId);
-    const targetEx = workoutTemplate.exercises[state.activeWorkout.currentExerciseIdx];
-    
-    // Track in logs notes that it was swapped
-    getWorkoutUsers().forEach(u => {
-      const logs = state.activeWorkout.logs[u.id][targetEx.id];
-      logs.forEach(l => {
-        l.notes = `Swapped from ${targetEx.name} to ${choice}. ` + (l.notes || '');
-      });
-    });
-
-    targetEx.name = choice;
-    alert(`Swapped exercise to ${choice}.`);
-    renderStrengthExercisePanel();
-  } else if (choice) {
-    alert('Invalid alternative choice entered.');
-  }
+  const alternatives = currentExercise.alternativeExercises || [];
+  if (!alternatives.length) return;
+  const dialog = document.getElementById('exercise-swap-dialog');
+  const choices = document.getElementById('exercise-swap-choices');
+  choices.replaceChildren();
+  alternatives.forEach(alternative => {
+    const button = document.createElement('button');
+    button.className = 'swap-choice';
+    button.innerHTML = `<strong>${escapeHTML(alternative.name)}</strong><span>${escapeHTML(alternative.targetMuscles)} · Start with a light load</span>`;
+    button.onclick = () => {
+      saveCurrentLiftsToState();
+      const w = state.activeWorkout;
+      const day = getSessionDay(w.workoutId);
+      const oldLogs = w.logs[w.activeLoggerUserId][currentExercise.id] || [];
+      if (oldLogs.some(set => set.completed)) {
+        alert('Save this exercise first. Swapping is available before you complete its first set.');
+        return;
+      }
+      const replacement = JSON.parse(JSON.stringify(alternative));
+      replacement.setsCount = currentExercise.setsCount;
+      replacement.alternativeExercises = [JSON.parse(JSON.stringify(currentExercise))];
+      replacement.alternatives = [currentExercise.name];
+      if (!replacement.isTimed && !currentExercise.isTimed) {
+        replacement.repRangeMin = currentExercise.repRangeMin;
+        replacement.repRangeMax = currentExercise.repRangeMax;
+      }
+      day.exercises[w.currentExerciseIdx] = replacement;
+      w.workoutSnapshot = day;
+      const userLogs = w.logs[w.activeLoggerUserId];
+      delete userLogs[currentExercise.id];
+      userLogs[replacement.id] = Array.from({length: replacement.setsCount}, (_, i) => ({setIndex:i+1, weight:0, reps:replacement.repRangeMin, completed:false, difficulty:3, pain:0, notes:`Alternative to ${currentExercise.name}`}));
+      if (w.recommendations?.[w.activeLoggerUserId]) delete w.recommendations[w.activeLoggerUserId][replacement.id];
+      dialog.close();
+      renderStrengthExercisePanel();
+      persistActiveWorkoutSession();
+    };
+    choices.appendChild(button);
+  });
+  dialog.showModal();
 }
 
 function renderUserLiftTable(exercise, userId, cardEl, rowsContainer) {
@@ -1720,11 +1785,11 @@ function renderUserLiftTable(exercise, userId, cardEl, rowsContainer) {
   const rec = state.activeWorkout.recommendations[user.id] && state.activeWorkout.recommendations[user.id][exercise.id];
   const recPill = cardEl.querySelector('.progression-pill');
   if (rec) {
-    let recText = `Target: ${exercise.setsCount} sets × ${exercise.repRangeMin}-${exercise.repRangeMax}. `;
+    let recText = `Target: ${exercise.setsCount} sets × ${exercise.repRangeMin}-${exercise.repRangeMax} ${exercise.isTimed ? 'seconds' : 'reps'}${exercise.perSide ? ' per side' : ''}. `;
     if (rec.weight !== null) {
       recText += `Recommend weight: <strong>${rec.weight} ${user.unit || 'kg'}</strong>. `;
     } else {
-      recText += `Recommend weight: <strong>Conservative Start / Bodyweight</strong>. `;
+      recText += `Starting load: <strong>Choose a light practice weight</strong>. `;
     }
     recText += `<br><span class="font-xs text-secondary">${escapeHTML(rec.notes)}</span>`;
     recPill.innerHTML = recText;
@@ -1748,15 +1813,15 @@ function renderUserLiftTable(exercise, userId, cardEl, rowsContainer) {
         <span class="set-field-label">Weight (${escapeHTML(user.unit || 'kg')})</span>
         <div class="touch-counter">
           <button type="button" class="btn-dec-w btn btn-secondary btn-xs">−2.5</button>
-          <input type="number" step="0.25" class="input-weight" value="${set.weight ?? ''}" placeholder="${user.unit || 'kg'}">
+          <input type="number" step="0.25" min="0" inputmode="decimal" aria-label="Set weight" class="input-weight" value="${set.weight ?? ''}" placeholder="${user.unit || 'kg'}">
           <button type="button" class="btn-inc-w btn btn-secondary btn-xs">+2.5</button>
         </div>
       </div>
       <div class="set-field">
-        <span class="set-field-label">Reps</span>
+        <span class="set-field-label">${exercise.isTimed ? 'Seconds' : (exercise.perSide ? 'Reps / side' : 'Reps')}</span>
         <div class="touch-counter">
           <button type="button" class="btn-dec-r btn btn-secondary btn-xs">−1</button>
-          <input type="number" step="1" class="input-reps" value="${set.reps || ''}" placeholder="Reps">
+          <input type="number" step="1" class="input-reps" value="${set.reps || ''}" placeholder="${exercise.isTimed ? 'Sec' : 'Reps'}" min="0" inputmode="numeric">
           <button type="button" class="btn-inc-r btn btn-secondary btn-xs">+1</button>
         </div>
       </div>
@@ -1837,7 +1902,7 @@ function triggerAutoRestTimer(seconds) {
 function saveCurrentLiftsToState() {
   const w = state.activeWorkout;
   if (!w || w.phase !== 'strength') return;
-  const workoutTemplate = state.program.days.find(d => d.id === w.workoutId);
+  const workoutTemplate = getSessionDay(w.workoutId);
   const exercise = workoutTemplate.exercises[w.currentExerciseIdx];
 
   const rowsContainer = document.getElementById('active-user-sets-rows');
@@ -1861,6 +1926,7 @@ function saveCurrentLiftsToState() {
 }
 
 function proceedToStretching() {
+  if (state.exerciseTimerCleanup) { state.exerciseTimerCleanup(); state.exerciseTimerCleanup = null; }
   state.activeWorkout.phase = 'stretching';
   state.activeWorkout.stretchIdx = 0;
   persistActiveWorkoutSession();
@@ -1870,7 +1936,7 @@ function proceedToStretching() {
 // ----------------- PHASE 3: GUIDED STRETCHING -----------------
 function startStretchingWizard() {
   const w = state.activeWorkout;
-  const workoutTemplate = state.program.days.find(d => d.id === w.workoutId);
+  const workoutTemplate = getSessionDay(w.workoutId);
   
   // Render stretches preview panel
   const preview = document.getElementById('stretches-list-preview');
@@ -2059,6 +2125,7 @@ function proceedToSummary() {
 // ----------------- PHASE 4: SUMMARY & SUBMIT -----------------
 function renderSummarySplash() {
   const w = state.activeWorkout;
+  document.getElementById('session-summary-notes').value = w.sessionNotes || '';
   
   // Calculate duration
   const start = new Date(w.startTime);
@@ -2125,9 +2192,15 @@ function renderSummarySplash() {
       stretchData,
       readinessScores: w.readinessScores,
       difficultyScores: diffScores,
+      exerciseNames: Object.fromEntries(getSessionDay(w.workoutId).exercises.map(ex => [ex.id, ex.name])),
+      workoutName: getSessionDay(w.workoutId).name,
       sessionNotes: document.getElementById('session-summary-notes').value || ''
     };
 
+    const saveButton = document.getElementById('save-session-btn');
+    if (saveButton.disabled) return;
+    saveButton.disabled = true;
+    saveButton.textContent = 'Saving your session…';
     try {
       const res = await fetch('/api/workout/complete', {
         method: 'POST',
@@ -2141,13 +2214,18 @@ function renderSummarySplash() {
         state.schedule = data.schedule;
       }
       alert('Session saved successfully!');
+      try { localStorage.removeItem(workoutDraftKey()); } catch (_) {}
       state.activeWorkout = null;
-      await fetch('/api/workout/active', { method: 'DELETE' });
+      stopAllActiveTimers();
+      setSaveStatus('Session saved');
       // Refresh configurations
       await loadSchedule();
       navigate('dashboard');
     } catch (err) {
       alert('Failed to save workout results: ' + err.message);
+    } finally {
+      saveButton.disabled = false;
+      saveButton.textContent = 'Save Session & Exit';
     }
   };
 }
@@ -2341,8 +2419,11 @@ async function submitReschedule() {
 let activeEditorDayId = 'day_1';
 
 function loadProgramEditor() {
+  renderPlanOverview();
   // Hook tabs
-  document.querySelectorAll('.tab-btn').forEach(btn => {
+  document.querySelectorAll('.program-editor-tabs .tab-btn').forEach(btn => {
+    const tabDay = state.program.days.find(day => day.id === btn.getAttribute('data-day-id'));
+    if (tabDay) btn.textContent = tabDay.name;
     btn.className = `tab-btn ${btn.getAttribute('data-day-id') === activeEditorDayId ? 'active' : ''}`;
     btn.onclick = () => {
       activeEditorDayId = btn.getAttribute('data-day-id');
@@ -2477,7 +2558,15 @@ async function saveProgramChanges() {
     const idx = parseInt(card.getAttribute('data-idx'));
     const ex = dayObj.exercises[idx];
     
-    ex.name = card.querySelector('.edit-ex-name').value;
+    const newName = card.querySelector('.edit-ex-name').value.trim();
+    if (newName !== ex.name) {
+      delete ex.source;
+      ex.media = [];
+      ex.alternatives = [];
+      ex.alternativeExercises = [];
+      ex.instructions = { setup: 'Add matching instructions before training this custom exercise.', movement: 'Technique guidance has not been checked for this exercise.', breathing: '', commonMistakes: '', safety: 'Ask a qualified trainer to demonstrate an unfamiliar movement.', cues: '' };
+    }
+    ex.name = newName;
     ex.targetMuscles = card.querySelector('.edit-ex-muscles').value;
     ex.setsCount = parseInt(card.querySelector('.edit-ex-sets').value) || 3;
     ex.repRangeMin = parseInt(card.querySelector('.edit-ex-rep-min').value) || 8;
@@ -2914,6 +3003,20 @@ function renderExerciseSVGVisual(exerciseName, targetContainer, customMedia = nu
     state.exerciseVisualInterval = null;
   }
 
+  if (mediaInfo?.source) {
+    const source = mediaInfo.source;
+    const url = safeGuideUrl(source.url);
+    targetContainer.innerHTML = `<div class="source-demo-card"><span class="eyebrow">LEARN THE MOVEMENT</span>
+      <h3>${escapeHTML(exerciseName)}</h3><p>${escapeHTML(mediaInfo.cues || 'Control the movement before adding weight.')}</p>
+      ${url ? `<a class="btn btn-accent" href="${escapeHTML(url)}" target="_blank" rel="noopener noreferrer">View demonstration ↗</a>` : ''}
+      <small>${escapeHTML(source.provider)} · Opens the original guide in a new tab</small>
+      ${source.note ? `<small>${escapeHTML(source.note)}</small>` : ''}</div>`;
+    return;
+  }
+  if (mediaInfo && !mediaInfo.source) {
+    targetContainer.innerHTML = '<div class="source-demo-card"><span class="eyebrow">CUSTOM EXERCISE</span><h3>No technique source attached</h3><p>This exercise does not yet have a checked demonstration. Add matching guidance before using it.</p></div>';
+    return;
+  }
   if (customMedia || mediaInfo) {
     if (Array.isArray(customMedia)) {
       const mediaSlides = customMedia.slice(0, 3);
@@ -3070,4 +3173,121 @@ function renderExerciseSVGVisual(exerciseName, targetContainer, customMedia = nu
   }
 
   targetContainer.innerHTML = svgHeader + svgCode + svgFooter;
+}
+
+// Device drafts are scoped to the signed-in member.
+function workoutDraftKey() { return `usfit-workout-${state.user?.id}`; }
+function readWorkoutDraft() {
+  try {
+    const draft = JSON.parse(localStorage.getItem(workoutDraftKey()) || 'null');
+    return ownsWorkout(draft) ? draft : null;
+  }
+  catch (_) { return null; }
+}
+function setSaveStatus(message) {
+  const el = document.getElementById('workout-save-status');
+  if (el) el.textContent = message;
+}
+window.addEventListener('online', () => {
+  document.getElementById('connection-status')?.classList.add('hidden');
+  if (state.activeWorkout) persistActiveWorkoutSession();
+});
+window.addEventListener('offline', () => document.getElementById('connection-status')?.classList.remove('hidden'));
+let draftInputTimer;
+document.addEventListener('input', event => {
+  if (!state.activeWorkout || !event.target.closest('#workout-view')) return;
+  clearTimeout(draftInputTimer);
+  draftInputTimer = setTimeout(() => persistActiveWorkoutSession(), 400);
+});
+document.addEventListener('click', event => {
+  if (!state.activeWorkout || !event.target.closest('.touch-counter, .chk-completed-wrapper')) return;
+  clearTimeout(draftInputTimer);
+  draftInputTimer = setTimeout(() => persistActiveWorkoutSession(), 150);
+});
+
+async function loadCoupleOverview() {
+  const heading = document.querySelector('#dashboard-view .view-title');
+  heading.textContent = `Let's go, ${state.user.displayName}.`;
+  const container = document.getElementById('couple-overview');
+  container.innerHTML = '';
+  const days = Object.values(state.schedule?.currentWeek?.days || {});
+  state.usersList.forEach(user => {
+    const complete = days.filter(day => day.userStatuses?.[user.id] === 'Completed').length;
+    const card = document.createElement('div');
+    card.className = 'couple-member';
+    card.innerHTML = `<span class="couple-avatar">${escapeHTML(user.displayName.charAt(0))}</span>
+      <div><strong>${escapeHTML(user.displayName)}${user.id === state.user.id ? ' · You' : ''}</strong>
+      <p class="text-secondary font-xs">${days.length ? `${complete} of ${days.length} sessions this week` : 'A fresh week starts together'}</p></div>
+      <span class="couple-score">${complete}<small> / ${days.length || 3}</small></span>`;
+    container.appendChild(card);
+  });
+}
+
+let workoutHistory = [];
+async function loadWorkoutHistory() {
+  const container = document.getElementById('workout-history-list');
+  container.textContent = 'Loading your sessions…';
+  try {
+    const response = await fetch('/api/history');
+    if (!response.ok) throw new Error('History is unavailable. Reopen Progress to try again.');
+    workoutHistory = await response.json();
+    const selector = document.getElementById('history-person');
+    const previous = selector.value;
+    selector.replaceChildren(new Option('Both of us', 'all'));
+    state.usersList.forEach(user => selector.add(new Option(user.displayName, user.id)));
+    selector.value = [...selector.options].some(option => option.value === previous) ? previous : 'all';
+    selector.onchange = renderWorkoutHistory;
+    document.getElementById('history-search').oninput = renderWorkoutHistory;
+    renderWorkoutHistory();
+  } catch (error) { container.textContent = error.message; }
+}
+function renderWorkoutHistory() {
+  const container = document.getElementById('workout-history-list');
+  const query = document.getElementById('history-search').value.trim().toLowerCase();
+  const member = document.getElementById('history-person').value;
+  const matches = workoutHistory.filter(workout =>
+    (member === 'all' || workout.logs?.[member]) &&
+    `${workout.workoutName} ${workout.displayName} ${workout.sessionNotes || ''}`.toLowerCase().includes(query));
+  container.innerHTML = '';
+  document.getElementById('history-count').textContent = `${matches.length} session${matches.length === 1 ? '' : 's'}`;
+  if (!matches.length) {
+    container.innerHTML = '<p class="history-empty text-secondary">' + (workoutHistory.length ? 'No matching sessions. Try another name or search.' : 'Your story starts with your first workout. Completed sessions will appear here.') + '</p>';
+    return;
+  }
+  matches.forEach(workout => {
+    const sets = Object.values(workout.logs || {}).flatMap(logs => Object.values(logs).flat()).filter(set => set.completed);
+    const details = document.createElement('details');
+    details.className = 'history-session';
+    details.innerHTML = `<summary><div><span class="history-date">${escapeHTML(new Date(workout.startTime).toLocaleDateString(undefined, { month: 'short', day: 'numeric', year: 'numeric' }))} · ${escapeHTML(workout.displayName)}</span>
+      <h4>${escapeHTML(workout.workoutName)}</h4><p class="text-secondary font-xs">${Number(workout.durationMinutes) || 0} min · ${sets.length} completed sets</p></div><span aria-hidden="true">＋</span></summary>
+      <div class="history-detail">${Object.values(workout.logs || {}).flatMap(logs => Object.entries(logs)).map(([id, exerciseSets]) => {
+        const completed = exerciseSets.filter(set => set.completed);
+        return completed.length ? `<div class="history-exercise"><strong>${escapeHTML(workout.exerciseNames[id] || id)}</strong><span>${completed.map(set => `${Number(set.weight) || 0} × ${Number(set.reps) || 0}`).join(' · ')}</span></div>` : '';
+      }).join('')}${workout.sessionNotes ? `<p class="history-note">${escapeHTML(workout.sessionNotes)}</p>` : ''}</div>`;
+    container.appendChild(details);
+  });
+}
+
+function safeGuideUrl(value) {
+  try { const url = new URL(value); return url.protocol === 'https:' ? url.href : ''; } catch (_) { return ''; }
+}
+function getSessionDay(workoutId) {
+  return state.activeWorkout?.workoutSnapshot || state.program.days.find(day => day.id === workoutId);
+}
+function renderPlanOverview() {
+  if (!state.program?.planVersion) return;
+  const female = state.user?.gender === 'female';
+  const html = `<div class="plan-hero"><div><span class="eyebrow">BUILT FOR YOUR GOALS</span>
+    <h2>${female ? 'Grow strong. Feel confident.' : 'Build your frame.'}</h2>
+    <p>${escapeHTML(state.program.goal)}</p></div><div class="plan-frequency"><strong>3</strong><span>days a week<br>up to 2 hours</span></div></div>
+    <div class="plan-timeline"><span><b>08 min</b> Easy warm-up</span><span><b>55–80 min</b> Lift & rest</span><span><b>05–10 min</b> Cool down</span></div>
+    <div class="plan-day-grid">${state.program.days.map((day, index) => `<details class="plan-day"><summary><span class="eyebrow">SESSION 0${index + 1}</span><h3>${escapeHTML(day.name.split(' — ')[1] || day.name)}</h3><p>${day.exercises.length} exercises · ${day.exercises.reduce((n, e) => n + e.setsCount, 0)} working sets</p><span class="plan-open">View session +</span></summary><div class="plan-exercises">${day.exercises.map(ex => `<div><strong>${escapeHTML(ex.name)}</strong><span>${ex.setsCount} × ${ex.repRangeMin}–${ex.repRangeMax} ${ex.isTimed ? 'sec' : 'reps'}${ex.perSide ? ' / side' : ''} · ${ex.restSeconds}s rest</span>${safeGuideUrl(ex.source?.url) ? `<a href="${escapeHTML(safeGuideUrl(ex.source.url))}" target="_blank" rel="noopener noreferrer">Technique guide ↗</a>` : ''}</div>`).join('')}</div></details>`).join('')}</div>
+    <details class="plan-guidance"><summary>How to make this plan work for you</summary><p>${escapeHTML(state.program.guidance)}</p><p>Before your first heavy lift, do 2–3 gradually heavier practice sets. Leave a rest day between sessions where possible. Optional easy cardio can use the remaining time; two hours is a limit, not a target.</p><p>Core training builds strength; it does not selectively remove tummy fat. Visible definition also depends on nutrition, body composition and genetics.</p><a href="https://acsm.org/resistance-training-guidelines-update-2026/" target="_blank" rel="noopener noreferrer">Training principles: ACSM ↗</a></details>`;
+  ['personal-plan-overview', 'program-plan-overview'].forEach(id => { const el = document.getElementById(id); if (el) el.innerHTML = html; });
+}
+function renderWorkoutGuide(exercise, day) {
+  const el = document.getElementById('exercise-coach-note');
+  if (!el) return;
+  el.innerHTML = `<div class="coach-metrics"><span><small>REST</small><strong>${exercise.restSeconds}s</strong></span><span><small>EFFORT</small><strong>1–3 reps left</strong></span><span><small>SESSION</small><strong>${state.activeWorkout.currentExerciseIdx + 1} / ${day.exercises.length}</strong></span></div>
+    <p>${exercise.isTimed ? 'Use the hold timer. Stop the hold when you can no longer maintain position.' : 'Choose a load you can control through every rep. Increase reps before increasing weight.'}${exercise.perSide ? ' Complete both sides; enter the reps or seconds for one side.' : ''}</p>`;
 }

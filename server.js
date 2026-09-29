@@ -8,7 +8,7 @@ const db = require('./db');
 
 const app = express();
 const PORT = process.env.PORT || 3000;
-const sessionSecret = process.env.SESSION_SECRET || 'usfit-couples-session-secret-key-2026';
+const sessionSecret = process.env.SESSION_SECRET || crypto.randomBytes(32).toString('hex');
 
 // Trust proxy for secure cookies on Vercel deployment
 app.set('trust proxy', 1);
@@ -24,7 +24,11 @@ const approvedEmails = Object.keys(accountGenders);
 console.log('Approved admin emails loaded:', approvedEmails);
 
 // Middleware
-app.use(express.json());
+app.use(express.json({ limit: '5mb' }));
+app.use('/api', (req, res, next) => {
+  res.set('Cache-Control', 'no-store');
+  next();
+});
 app.use(express.urlencoded({ extended: true }));
 
 // Sessions configuration (using cookie-session for serverless deployment on Vercel)
@@ -43,6 +47,10 @@ app.use(express.static(path.join(__dirname, 'public')));
 // Authentication check middleware
 function requireAuth(req, res, next) {
   if (req.session && req.session.userId) {
+    const expectedUser = req.get('X-Usfit-User');
+    if (expectedUser && expectedUser !== req.session.userId) {
+      return res.status(409).json({ code: 'ACCOUNT_CHANGED', error: 'The account changed in another tab. Sign in again before continuing.' });
+    }
     return next();
   }
   return res.status(401).json({ error: 'Unauthorized. Please log in.' });
@@ -88,25 +96,26 @@ function scheduleForUser(schedule, userId) {
 
 // REST API Routes
 
-// Get registration status for emails
+// Do not publish the approved email list to unauthenticated visitors.
 app.get('/api/auth/config', (req, res) => {
-  const users = db.read().users;
-  const status = approvedEmails.map(email => {
-    return {
-      email,
-      isRegistered: !!users[email]
-    };
-  });
-  res.json({
-    status,
-    registrationClosed: approvedEmails.length > 0 && status.every(s => s.isRegistered)
-  });
+  res.json({ passphraseRequired: Boolean(process.env.USFIT_PASSPHRASE) });
 });
 
+function requirePrivatePassphrase(req, res, next) {
+  const expected = process.env.USFIT_PASSPHRASE;
+  if (!expected) return next();
+  const digest = value => crypto.createHash('sha256').update(value).digest();
+  if (typeof req.body.passphrase !== 'string' ||
+      !crypto.timingSafeEqual(digest(req.body.passphrase), digest(expected))) {
+    return res.status(401).json({ error: 'Enter your shared private passphrase.' });
+  }
+  next();
+}
+
 // Register first-time user (Passwordless)
-app.post('/api/auth/register', (req, res) => {
+app.post('/api/auth/register', requirePrivatePassphrase, (req, res) => {
   const { email, displayName } = req.body;
-  if (!email || !displayName) {
+  if (typeof email !== 'string' || typeof displayName !== 'string' || !email.trim() || !displayName.trim() || displayName.length > 60) {
     return res.status(400).json({ error: 'Email and display name are required.' });
   }
 
@@ -147,9 +156,9 @@ app.post('/api/auth/register', (req, res) => {
 });
 
 // Login (Passwordless)
-app.post('/api/auth/login', (req, res) => {
+app.post('/api/auth/login', requirePrivatePassphrase, (req, res) => {
   const { email } = req.body;
-  if (!email) {
+  if (typeof email !== 'string' || !email.trim()) {
     return res.status(400).json({ error: 'Email is required.' });
   }
 
@@ -481,6 +490,14 @@ app.post('/api/workout/active', requireAuth, (req, res) => {
     return res.status(400).json({ error: 'Invalid active workout session.' });
   }
 
+  const owner = req.session.userId;
+  if ((activeWorkout.ownerUserId && activeWorkout.ownerUserId !== owner) ||
+      (activeWorkout.activeLoggerUserId && activeWorkout.activeLoggerUserId !== owner) ||
+      Object.keys(activeWorkout.logs || {}).some(id => id !== owner)) {
+    return res.status(403).json({ error: 'This workout belongs to a different account.' });
+  }
+  activeWorkout.ownerUserId = owner;
+
   const allowedPhases = new Set(['treadmill', 'strength', 'stretching', 'summary']);
   if (!allowedPhases.has(activeWorkout.phase)) {
     return res.status(400).json({ error: 'Invalid workout phase.' });
@@ -513,7 +530,7 @@ function getProgressionRecommendation(exercise, latestWorkout, userId) {
     return {
       weight: startW,
       reps: exercise.repRangeMin,
-      notes: startW > 0
+      notes: exercise.source ? 'Choose a light practice load and build up with controlled form.' : startW > 0
         ? `Starting set: No previous data for this exercise yet. Begin at ${startW}kg.`
         : "Starting set: Begin with bodyweight and focus on controlled form.",
       action: "start"
@@ -606,7 +623,7 @@ app.post('/api/workout/complete', requireAuth, (req, res) => {
     stretchData, // { userId: { completed, skippedReason } }
     readinessScores, // { userId: rating }
     difficultyScores, // { userId: rating }
-    sessionNotes
+    sessionNotes, exerciseNames, workoutName
   } = req.body;
 
   if (!workoutId) {
@@ -614,13 +631,25 @@ app.post('/api/workout/complete', requireAuth, (req, res) => {
   }
 
   const userId = req.session.userId;
+  const startCheck = Date.parse(startTime);
+  const endCheck = Date.parse(endTime);
+  if (!Number.isFinite(startCheck) || !Number.isFinite(endCheck) || endCheck < startCheck) {
+    return res.status(400).json({ error: 'Please provide valid workout start and end times.' });
+  }
+  // A retry after a dropped response must not create a second workout.
+  const existing = db.getHistory().find(w => w.completedByUserId === userId &&
+    w.workoutId === workoutId && Date.parse(w.startTime) === startCheck);
+  if (existing) return res.json({ message: 'Workout already saved.', workoutLog: existing,
+    schedule: scheduleForUser(db.getSchedule(), userId) });
 
-  // Extract user entries with safe key fallback
+  if (!logs || typeof logs !== 'object' || !logs[userId] || Object.keys(logs).some(id => id !== userId)) {
+    return res.status(403).json({ error: 'Only your own workout sets can be saved to your account.' });
+  }
+
+  // Extract only the authenticated member's entries.
   const extractUserEntry = (container) => {
     if (!container || typeof container !== 'object') return {};
     if (container[userId] !== undefined) return container[userId];
-    const keys = Object.keys(container);
-    if (keys.length > 0) return container[keys[0]];
     return {};
   };
 
@@ -646,6 +675,8 @@ app.post('/api/workout/complete', requireAuth, (req, res) => {
     readinessScores: { [userId]: userReadiness },
     difficultyScores: { [userId]: userDifficulty },
     sessionNotes: sessionNotes || '',
+    exerciseNames: exerciseNames && typeof exerciseNames === 'object' && !Array.isArray(exerciseNames) ? Object.fromEntries(Object.entries(exerciseNames).filter(([key, value]) => typeof value === 'string' && key.length < 100).map(([key, value]) => [key, value.slice(0, 120)])) : {},
+    workoutName: typeof workoutName === 'string' ? workoutName.slice(0, 160) : undefined,
     completedByUserId: userId,
     completedByUsername: req.session.displayName
   };
@@ -701,6 +732,20 @@ app.post('/api/workout/complete', requireAuth, (req, res) => {
   }
 
   res.json({ message: 'Workout logged successfully!', workoutLog, schedule: scheduleForUser(schedule, req.session.userId) });
+});
+
+// Shared history belongs to the two authenticated members only.
+app.get('/api/history', requireAuth, (req, res) => {
+  const users = Object.values(db.read().users);
+  const history = db.getHistory().map(workout => {
+    const owner = users.find(u => u.id === workout.completedByUserId) ||
+      users.find(u => workout.logs && workout.logs[u.id]);
+    const program = db.getProgram(owner?.gender || 'male');
+    return { ...workout, displayName: owner?.displayName || 'Partner',
+      workoutName: workout.workoutName || program.days.find(day => day.id === workout.workoutId)?.name || 'Workout',
+      exerciseNames: { ...Object.fromEntries(program.days.flatMap(day => day.exercises.map(ex => [ex.id, ex.name]))), ...workout.exerciseNames } };
+  }).sort((a, b) => Date.parse(b.startTime) - Date.parse(a.startTime));
+  res.json(history);
 });
 
 // Analytics & Reports API
