@@ -3,6 +3,7 @@ const path = require('path');
 
 const os = require('os');
 const trainingPlan = require('./training-plan');
+const exerciseMedia = require('./exercise-media.json');
 
 const DB_DIR = process.env.USFIT_DATA_DIR || path.join(__dirname, 'data');
 const DB_FILE = path.join(DB_DIR, 'database.json');
@@ -1058,6 +1059,10 @@ function applyVerifiedMedia(program) {
   const result = JSON.parse(JSON.stringify(program));
   result.days.forEach(day => {
     (day.exercises || []).forEach(exercise => {
+      if (exercise.source && exerciseMedia[exercise.name]) {
+        exercise.demonstration = exerciseMedia[exercise.name];
+        (exercise.alternativeExercises || []).forEach(alt => { if (exerciseMedia[alt.name]) alt.demonstration = exerciseMedia[alt.name]; });
+      }
       if (!exercise.source && Object.prototype.hasOwnProperty.call(verifiedMediaByExerciseName, exercise.name)) {
         exercise.media = verifiedMediaByExerciseName[exercise.name];
       }

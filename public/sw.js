@@ -11,8 +11,8 @@ self.addEventListener('push', (event) => {
   const title = data.title || 'UsFit Workout Reminder 🏋️';
   const options = {
     body: data.body || 'Today is a scheduled workout day! Time to train together.',
-    icon: 'https://cdn-icons-png.flaticon.com/512/2964/2964514.png',
-    badge: 'https://cdn-icons-png.flaticon.com/512/2964/2964514.png',
+    icon: '/assets/images/logo.png',
+    badge: '/assets/images/logo.png',
     data: { url: '/' }
   };
   event.waitUntil(self.registration.showNotification(title, options));
@@ -23,7 +23,7 @@ self.addEventListener('notificationclick', (event) => {
   event.waitUntil(
     clients.matchAll({ type: 'window' }).then((clientList) => {
       for (const client of clientList) {
-        if (client.url === '/' && 'focus' in client) return client.focus();
+        if (new URL(client.url).origin === self.location.origin && 'focus' in client) return client.focus();
       }
       if (clients.openWindow) return clients.openWindow('/');
     })

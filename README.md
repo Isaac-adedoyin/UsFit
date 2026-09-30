@@ -40,3 +40,17 @@ Technique links point to StrengthLog's exercise guides. References were checked 
 Exercise alternatives replace the whole movement definition and start with a fresh load. A session keeps its own exercise snapshot so swaps do not alter the permanent plan. Completed sessions retain exercise and workout names. Warm-up sets are additional practice sets and are not logged as working sets. Hold exercises show seconds; single-side exercises specify per-side targets.
 
 The installed previous programs are retained in `previousTrainingPrograms` in the database, and a complete pre-install backup is saved as `data/before-goal-plans-*.bak`. To install on another local copy, stop the server and run `node scripts/install-training-plan.js`, then restart. The installer refuses to replace plans while a workout is active.
+
+## Scheduled-day access and verification
+
+Workout start, resume, recommendations, active-session writes, and completion are restricted to the exact scheduled calendar date. Dates are derived from the selected ISO week (Monday through Sunday); the shared timezone defaults to `Europe/Budapest` and can be configured with `USFIT_TIMEZONE`. Both members share dates but retain individual exercises, set counts, and logs. Program previews remain readable for planning.
+
+Automated browser checks live in `tests/browser-check.cjs`. They use temporary data and test both accounts at phone and desktop widths, service-worker notifications, warm-up pause, rest and hold countdowns, reload recovery, completion and history. Run with an installed Playwright module (`PLAYWRIGHT_MODULE` may specify its path) and optionally set `CHROME_PATH`. Browser screenshots are written to the temporary test directory.
+
+Notifications are tested through the service worker. Scheduled reminders require the app to be open; no background push scheduler is configured. Real-phone lock-screen behavior and operating-system notification delivery still require device testing. Exercise demonstrations open the original source pages rather than embedding unlicensed pictures.
+
+### Couples milestones and demonstration photos
+
+Home shows the shared calendar-week streak, each member's three-session progress, and five expandable milestone badges. A perfect week requires three distinct plan days completed by each member. The current unfinished week has a grace period; a missed closed week breaks the streak. Historical shared status alone is not treated as proof that both people completed a session. Volume uses completed weighted repetitions, excludes timed holds, and converts new pound-based logs to kilograms; older logs without unit metadata are assumed to use kilograms.
+
+Goal-plan strength exercises now show local position-reference photos (with previous/next controls) or a machine illustration. Source, license, variation notes and the original technique guide remain visible. Attribution is recorded in `public/assets/images/exercises/demos/ATTRIBUTION.md` and `exercise-media.json`. The photos are manually advanced position references, not videos.

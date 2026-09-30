@@ -118,7 +118,6 @@
 
       <div class="couple-intro"><span class="eyebrow">OUR LITTLE TRAINING CLUB</span><p class="text-secondary">Two people. Your own pace. Stronger together.</p></div>
       <div id="couple-overview" class="couple-overview"></div>
-      <div id="personal-plan-overview" class="plan-overview"></div>
       <!-- Weekly Progress Summary Card -->
       <div class="week-progress-card glass-panel gradient-border">
         <div class="progress-details">
@@ -146,6 +145,18 @@
         <!-- Will show scheduled workout or prompts to schedule -->
       </div>
 
+      <!-- AI Couple's Fitness Coach Card -->
+      <div id="ai-coach-card" class="ai-coach-card glass-panel gradient-border margin-top-md">
+        <div class="ai-coach-header">
+          <span class="ai-sparkles-icon">✨</span>
+          <h3 id="ai-coach-title">AI Couple's Fitness Coach</h3>
+        </div>
+        <p id="ai-coach-advice" class="ai-coach-text">Analyzing joint readiness & history...</p>
+        <div id="ai-coach-fact" class="ai-coach-fact-badge"></div>
+      </div>
+
+      <section id="couples-achievements" class="glass-panel couples-achievements" aria-label="Couples streak and badges"></section>
+      <div id="personal-plan-overview" class="plan-overview"></div>
       <!-- Readiness Ratings Modal Overlay (for starting a workout) -->
       <div id="readiness-overlay" class="modal-overlay hidden">
         <div class="modal-card glass-panel">
@@ -773,7 +784,7 @@
 
         <div class="settings-card glass-panel">
           <h3>Workout Reminders</h3>
-          <p class="text-secondary font-xs">Receive alerts on scheduled workout days.</p>
+          <p class="text-secondary font-xs">Timer alerts and workout-day reminders while UsFit is open. Closed-app scheduled reminders are not configured.</p>
           
           <div class="notification-status-box margin-top-sm">
             <div class="flex-between align-center">

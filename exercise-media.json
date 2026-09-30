@@ -1,0 +1,199 @@
+{
+  "Hip Thrust": {
+    "images": [
+      "/assets/images/exercises/demos/Barbell_Hip_Thrust-0.jpg",
+      "/assets/images/exercises/demos/Barbell_Hip_Thrust-1.jpg"
+    ],
+    "provider": "Free Exercise DB",
+    "url": "https://github.com/yuhonas/free-exercise-db/tree/main/exercises/Barbell_Hip_Thrust",
+    "license": "Public domain (Unlicense)",
+    "licenseUrl": "https://github.com/yuhonas/free-exercise-db/blob/main/LICENSE.md",
+    "note": ""
+  },
+  "Hack Squat": {
+    "images": [
+      "/assets/images/exercises/demos/Hack_Squat-0.jpg",
+      "/assets/images/exercises/demos/Hack_Squat-1.jpg"
+    ],
+    "provider": "Free Exercise DB",
+    "url": "https://github.com/yuhonas/free-exercise-db/tree/main/exercises/Hack_Squat",
+    "license": "Public domain (Unlicense)",
+    "licenseUrl": "https://github.com/yuhonas/free-exercise-db/blob/main/LICENSE.md",
+    "note": ""
+  },
+  "Bulgarian Split Squat": {
+    "images": [
+      "/assets/images/exercises/demos/Split_Squat_with_Dumbbells-0.jpg",
+      "/assets/images/exercises/demos/Split_Squat_with_Dumbbells-1.jpg"
+    ],
+    "provider": "Free Exercise DB",
+    "url": "https://github.com/yuhonas/free-exercise-db/tree/main/exercises/Split_Squat_with_Dumbbells",
+    "license": "Public domain (Unlicense)",
+    "licenseUrl": "https://github.com/yuhonas/free-exercise-db/blob/main/LICENSE.md",
+    "note": "Dumbbell, rear-foot-elevated variation shown. Complete both sides."
+  },
+  "Romanian Deadlift": {
+    "images": [
+      "/assets/images/exercises/demos/Romanian_Deadlift-0.jpg",
+      "/assets/images/exercises/demos/Romanian_Deadlift-1.jpg"
+    ],
+    "provider": "Free Exercise DB",
+    "url": "https://github.com/yuhonas/free-exercise-db/tree/main/exercises/Romanian_Deadlift",
+    "license": "Public domain (Unlicense)",
+    "licenseUrl": "https://github.com/yuhonas/free-exercise-db/blob/main/LICENSE.md",
+    "note": ""
+  },
+  "Seated Leg Curl": {
+    "images": [
+      "/assets/images/exercises/demos/Seated_Leg_Curl-0.jpg",
+      "/assets/images/exercises/demos/Seated_Leg_Curl-1.jpg"
+    ],
+    "provider": "Free Exercise DB",
+    "url": "https://github.com/yuhonas/free-exercise-db/tree/main/exercises/Seated_Leg_Curl",
+    "license": "Public domain (Unlicense)",
+    "licenseUrl": "https://github.com/yuhonas/free-exercise-db/blob/main/LICENSE.md",
+    "note": ""
+  },
+  "Hip-Abduction Machine": {
+    "images": [
+      "/assets/images/exercises/demos/Thigh_Abductor-0.jpg",
+      "/assets/images/exercises/demos/Thigh_Abductor-1.jpg"
+    ],
+    "provider": "Free Exercise DB",
+    "url": "https://github.com/yuhonas/free-exercise-db/tree/main/exercises/Thigh_Abductor",
+    "license": "Public domain (Unlicense)",
+    "licenseUrl": "https://github.com/yuhonas/free-exercise-db/blob/main/LICENSE.md",
+    "note": ""
+  },
+  "Plank": {
+    "images": [
+      "/assets/images/exercises/demos/Plank-0.jpg",
+      "/assets/images/exercises/demos/Plank-1.jpg"
+    ],
+    "provider": "Free Exercise DB",
+    "url": "https://github.com/yuhonas/free-exercise-db/tree/main/exercises/Plank",
+    "license": "Public domain (Unlicense)",
+    "licenseUrl": "https://github.com/yuhonas/free-exercise-db/blob/main/LICENSE.md",
+    "note": ""
+  },
+  "Side Plank": {
+    "images": [
+      "/assets/images/exercises/demos/Side_Bridge-0.jpg",
+      "/assets/images/exercises/demos/Side_Bridge-1.jpg"
+    ],
+    "provider": "Free Exercise DB",
+    "url": "https://github.com/yuhonas/free-exercise-db/tree/main/exercises/Side_Bridge",
+    "license": "Public domain (Unlicense)",
+    "licenseUrl": "https://github.com/yuhonas/free-exercise-db/blob/main/LICENSE.md",
+    "note": ""
+  },
+  "Machine Chest Press": {
+    "images": [
+      "/assets/images/exercises/demos/Machine_Bench_Press-0.jpg",
+      "/assets/images/exercises/demos/Machine_Bench_Press-1.jpg"
+    ],
+    "provider": "Free Exercise DB",
+    "url": "https://github.com/yuhonas/free-exercise-db/tree/main/exercises/Machine_Bench_Press",
+    "license": "Public domain (Unlicense)",
+    "licenseUrl": "https://github.com/yuhonas/free-exercise-db/blob/main/LICENSE.md",
+    "note": ""
+  },
+  "Machine Shoulder Press": {
+    "images": [
+      "/assets/images/exercises/demos/Machine_Shoulder_Military_Press-0.jpg",
+      "/assets/images/exercises/demos/Machine_Shoulder_Military_Press-1.jpg"
+    ],
+    "provider": "Free Exercise DB",
+    "url": "https://github.com/yuhonas/free-exercise-db/tree/main/exercises/Machine_Shoulder_Military_Press",
+    "license": "Public domain (Unlicense)",
+    "licenseUrl": "https://github.com/yuhonas/free-exercise-db/blob/main/LICENSE.md",
+    "note": ""
+  },
+  "Neutral-Grip Lat Pulldown": {
+    "images": [
+      "/assets/images/exercises/demos/V-Bar_Pulldown-0.jpg",
+      "/assets/images/exercises/demos/V-Bar_Pulldown-1.jpg"
+    ],
+    "provider": "Free Exercise DB",
+    "url": "https://github.com/yuhonas/free-exercise-db/tree/main/exercises/V-Bar_Pulldown",
+    "license": "Public domain (Unlicense)",
+    "licenseUrl": "https://github.com/yuhonas/free-exercise-db/blob/main/LICENSE.md",
+    "note": "Neutral-grip V-bar variation shown."
+  },
+  "Chest-Supported Machine Row": {
+    "images": [
+      "/assets/images/exercises/demos/Lying_T-Bar_Row-0.jpg",
+      "/assets/images/exercises/demos/Lying_T-Bar_Row-1.jpg"
+    ],
+    "provider": "Free Exercise DB",
+    "url": "https://github.com/yuhonas/free-exercise-db/tree/main/exercises/Lying_T-Bar_Row",
+    "license": "Public domain (Unlicense)",
+    "licenseUrl": "https://github.com/yuhonas/free-exercise-db/blob/main/LICENSE.md",
+    "note": "Chest-supported T-bar machine shown. Machine layout may differ; keep your chest on the pad."
+  },
+  "Barbell Curl": {
+    "images": [
+      "/assets/images/exercises/demos/Barbell_Curl-0.jpg",
+      "/assets/images/exercises/demos/Barbell_Curl-1.jpg"
+    ],
+    "provider": "Free Exercise DB",
+    "url": "https://github.com/yuhonas/free-exercise-db/tree/main/exercises/Barbell_Curl",
+    "license": "Public domain (Unlicense)",
+    "licenseUrl": "https://github.com/yuhonas/free-exercise-db/blob/main/LICENSE.md",
+    "note": ""
+  },
+  "Rope Triceps Pushdown": {
+    "images": [
+      "/assets/images/exercises/demos/Triceps_Pushdown_-_Rope_Attachment-0.jpg",
+      "/assets/images/exercises/demos/Triceps_Pushdown_-_Rope_Attachment-1.jpg"
+    ],
+    "provider": "Free Exercise DB",
+    "url": "https://github.com/yuhonas/free-exercise-db/tree/main/exercises/Triceps_Pushdown_-_Rope_Attachment",
+    "license": "Public domain (Unlicense)",
+    "licenseUrl": "https://github.com/yuhonas/free-exercise-db/blob/main/LICENSE.md",
+    "note": ""
+  },
+  "Standing Calf Raise": {
+    "images": [
+      "/assets/images/exercises/demos/Standing_Calf_Raises-0.jpg",
+      "/assets/images/exercises/demos/Standing_Calf_Raises-1.jpg"
+    ],
+    "provider": "Free Exercise DB",
+    "url": "https://github.com/yuhonas/free-exercise-db/tree/main/exercises/Standing_Calf_Raises",
+    "license": "Public domain (Unlicense)",
+    "licenseUrl": "https://github.com/yuhonas/free-exercise-db/blob/main/LICENSE.md",
+    "note": ""
+  },
+  "Cable Crunch": {
+    "images": [
+      "/assets/images/exercises/demos/Cable_Crunch-0.jpg",
+      "/assets/images/exercises/demos/Cable_Crunch-1.jpg"
+    ],
+    "provider": "Free Exercise DB",
+    "url": "https://github.com/yuhonas/free-exercise-db/tree/main/exercises/Cable_Crunch",
+    "license": "Public domain (Unlicense)",
+    "licenseUrl": "https://github.com/yuhonas/free-exercise-db/blob/main/LICENSE.md",
+    "note": ""
+  },
+  "Leg Press": {
+    "images": [
+      "/assets/images/exercises/demos/Leg_Press-0.jpg",
+      "/assets/images/exercises/demos/Leg_Press-1.jpg"
+    ],
+    "provider": "Free Exercise DB",
+    "url": "https://github.com/yuhonas/free-exercise-db/tree/main/exercises/Leg_Press",
+    "license": "Public domain (Unlicense)",
+    "licenseUrl": "https://github.com/yuhonas/free-exercise-db/blob/main/LICENSE.md",
+    "note": ""
+  },
+  "Machine Lateral Raise": {
+    "images": [
+      "/assets/images/exercises/library/machine-lateral-raise-1.jpg"
+    ],
+    "provider": "wger \u00b7 roneydya",
+    "url": "https://wger.de/en/exercise/1654/view",
+    "license": "CC BY-SA 4.0",
+    "licenseUrl": "https://creativecommons.org/licenses/by-sa/4.0/",
+    "note": "Machine setup reference. Raise your upper arms with control; your machine may look different."
+  }
+}

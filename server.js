@@ -5,6 +5,9 @@ const crypto = require('crypto');
 const path = require('path');
 const fs = require('fs');
 const db = require('./db');
+const { getAchievements } = require('./achievements');
+const { generateAICoachAdvice } = require('./aiCoach');
+const { DAY_ORDER, TIME_ZONE, dateForDay, todayInZone, workoutAccess } = require('./schedule-dates');
 
 const app = express();
 const PORT = process.env.PORT || 3000;
@@ -69,9 +72,10 @@ function scheduleStatusForUsers(userStatuses) {
 function normalizeSchedule(schedule) {
   if (!schedule.currentWeek) return schedule;
   const userIds = Object.values(db.read().users).map(user => user.id);
-  const dayOrder = { Sunday: 0, Monday: 1, Tuesday: 2, Wednesday: 3, Thursday: 4, Friday: 5, Saturday: 6 };
+  const dayOrder = Object.fromEntries(DAY_ORDER.map((day,index)=>[day,index]));
   const orderedDays = Object.entries(schedule.currentWeek.days || {}).sort(([a], [b]) => dayOrder[a] - dayOrder[b]);
-  orderedDays.forEach(([, day], index) => {
+  orderedDays.forEach(([name, day], index) => {
+    day.date = dateForDay(schedule.currentWeek.weekId, name);
     if (!day.userStatuses) {
       day.userStatuses = Object.fromEntries(userIds.map(userId => [userId, day.status || 'Planned']));
     } else {
@@ -86,10 +90,15 @@ function normalizeSchedule(schedule) {
 
 function scheduleForUser(schedule, userId) {
   const view = JSON.parse(JSON.stringify(normalizeSchedule(schedule)));
+  view.today = todayInZone();
+  view.timeZone = TIME_ZONE;
   if (!view.currentWeek) return view;
-  Object.values(view.currentWeek.days || {}).forEach(day => {
+  Object.entries(view.currentWeek.days || {}).forEach(([name, day]) => {
     day.overallStatus = day.status;
     day.status = day.userStatuses[userId] || 'Planned';
+    const access = workoutAccess(view, userId, day.workoutId, name);
+    day.canTrain = access.allowed;
+    day.lockReason = access.error || '';
   });
   return view;
 }
@@ -322,6 +331,7 @@ app.post('/api/schedule/setup', requireAuth, (req, res) => {
     return res.status(400).json({ error: 'Week ID and days mapping are required.' });
   }
 
+  if (!dateForDay(weekId, 'Monday')) return res.status(400).json({error:'Choose a valid calendar week.'});
   const daysList = Object.keys(daysMapping);
   if (daysList.length !== 3) {
     return res.status(400).json({ error: 'You must select exactly 3 training days.' });
@@ -339,7 +349,7 @@ app.post('/api/schedule/setup', requireAuth, (req, res) => {
     "Thursday": 4, "Friday": 5, "Saturday": 6
   };
 
-  const sortedDays = daysList.sort((a, b) => dayIndex[a] - dayIndex[b]);
+  const sortedDays = daysList.sort((a, b) => DAY_ORDER.indexOf(a) - DAY_ORDER.indexOf(b));
   const warnings = [];
 
   // Check distances
@@ -401,21 +411,20 @@ app.post('/api/schedule/update-day', requireAuth, (req, res) => {
   }
 
   const daySchedule = schedule.currentWeek.days[dayName];
-  daySchedule.userStatuses[req.session.userId] = status;
-  daySchedule.status = scheduleStatusForUsers(daySchedule.userStatuses);
   if (rescheduledTo) {
-    daySchedule.rescheduledTo = rescheduledTo;
-    
-    // Add the rescheduled day to the schedule if it doesn't exist
-    if (!schedule.currentWeek.days[rescheduledTo]) {
-      const userIds = Object.values(db.read().users).map(user => user.id);
-      schedule.currentWeek.days[rescheduledTo] = {
-        workoutId: daySchedule.workoutId,
-        status: 'Upcoming',
-        userStatuses: Object.fromEntries(userIds.map(userId => [userId, userId === req.session.userId ? 'Upcoming' : 'Planned'])),
-        rescheduledTo: null
-      };
+    if (!DAY_ORDER.includes(rescheduledTo) || schedule.currentWeek.days[rescheduledTo]) return res.status(400).json({error:'Choose an unused training day.'});
+    if (Object.values(daySchedule.userStatuses).some(s => ['Completed','In progress'].includes(s))) return res.status(409).json({error:'A started or completed session cannot be moved for both partners.'});
+    const date = dateForDay(schedule.currentWeek.weekId, rescheduledTo);
+    if (!date || date < todayInZone()) return res.status(400).json({error:'Choose today or a future date in this week.'});
+    schedule.currentWeek.days[rescheduledTo] = { ...daySchedule, date, rescheduledTo:null };
+    delete schedule.currentWeek.days[dayName];
+  } else {
+    if (['In progress','Completed'].includes(status)) {
+      const access = workoutAccess(schedule, req.session.userId, daySchedule.workoutId, dayName);
+      if (!access.allowed) return res.status(403).json({error:access.error});
     }
+    daySchedule.userStatuses[req.session.userId] = status;
+    daySchedule.status = scheduleStatusForUsers(daySchedule.userStatuses);
   }
 
   db.saveSchedule(normalizeSchedule(schedule));
@@ -463,6 +472,10 @@ app.get('/api/workout/recommendations/:dayId', requireAuth, (req, res) => {
     return res.status(404).json({ error: 'Workout program day not found.' });
   }
 
+  const schedule = db.getSchedule();
+  const name = Object.keys(schedule.currentWeek?.days || {}).find(name => schedule.currentWeek.days[name].workoutId === dayId && !schedule.currentWeek.days[name].rescheduledTo);
+  const access = workoutAccess(schedule, req.session.userId, dayId, name);
+  if (!access.allowed) return res.status(403).json({error:access.error});
   const users = currentUser ? [currentUser] : [];
   const recommendations = {};
 
@@ -503,6 +516,8 @@ app.post('/api/workout/active', requireAuth, (req, res) => {
     return res.status(400).json({ error: 'Invalid workout phase.' });
   }
 
+  const access = workoutAccess(db.getSchedule(), req.session.userId, activeWorkout.workoutId, activeWorkout.scheduledDayName);
+  if (!access.allowed) return res.status(403).json({ error: access.error });
   const saved = db.saveActiveSession(req.session.userId, activeWorkout);
   res.json({ message: 'Active workout saved.', savedAt: saved.savedAt });
 });
@@ -646,6 +661,9 @@ app.post('/api/workout/complete', requireAuth, (req, res) => {
     return res.status(403).json({ error: 'Only your own workout sets can be saved to your account.' });
   }
 
+  const access = workoutAccess(db.getSchedule(), userId, workoutId, scheduledDayName);
+  if (!access.allowed) return res.status(403).json({error:access.error});
+
   // Extract only the authenticated member's entries.
   const extractUserEntry = (container) => {
     if (!container || typeof container !== 'object') return {};
@@ -677,6 +695,10 @@ app.post('/api/workout/complete', requireAuth, (req, res) => {
     sessionNotes: sessionNotes || '',
     exerciseNames: exerciseNames && typeof exerciseNames === 'object' && !Array.isArray(exerciseNames) ? Object.fromEntries(Object.entries(exerciseNames).filter(([key, value]) => typeof value === 'string' && key.length < 100).map(([key, value]) => [key, value.slice(0, 120)])) : {},
     workoutName: typeof workoutName === 'string' ? workoutName.slice(0, 160) : undefined,
+    scheduledWeekId: db.getSchedule().currentWeek?.weekId,
+    scheduledDate: access.date,
+    weightUnit: db.getUser(req.session.email)?.unit || 'kg',
+    timedExerciseIds: (db.getActiveSession(userId)?.workoutSnapshot?.exercises || []).filter(ex=>ex.isTimed).map(ex=>ex.id),
     completedByUserId: userId,
     completedByUsername: req.session.displayName
   };
@@ -746,6 +768,33 @@ app.get('/api/history', requireAuth, (req, res) => {
       exerciseNames: { ...Object.fromEntries(program.days.flatMap(day => day.exercises.map(ex => [ex.id, ex.name]))), ...workout.exerciseNames } };
   }).sort((a, b) => Date.parse(b.startTime) - Date.parse(a.startTime));
   res.json(history);
+});
+
+app.get('/api/achievements', requireAuth, (req, res) => res.json(getAchievements(db.read())));
+
+// AI Couple's Fitness Coach API
+app.post('/api/ai/coach', requireAuth, async (req, res) => {
+  try {
+    const { type, readinessScores, workout } = req.body;
+    const users = db.read().users || {};
+    const userList = Object.values(users);
+    const userNames = {
+      u1: req.session.displayName || userList[0]?.displayName || 'Partner 1',
+      u2: userList.find(u => u.email !== req.session.email)?.displayName || 'Partner 2'
+    };
+    const history = db.getHistory() || [];
+    const advice = await generateAICoachAdvice({
+      type: type || 'pre-workout',
+      userNames,
+      readinessScores: readinessScores || {},
+      workout: workout || {},
+      history
+    });
+    res.json(advice);
+  } catch (err) {
+    console.error('AI Coach endpoint error:', err);
+    res.status(500).json({ error: 'Failed to generate AI advice' });
+  }
 });
 
 // Analytics & Reports API

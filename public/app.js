@@ -156,16 +156,7 @@ function stopAllActiveTimers() {
 }
 
 function notifyTimerComplete(title, body) {
-  if ('Notification' in window && Notification.permission === 'granted' && document.visibilityState === 'hidden') {
-    try {
-      new Notification(title, {
-        body,
-        icon: 'https://cdn-icons-png.flaticon.com/512/2964/2964514.png'
-      });
-    } catch (e) {
-      console.warn('Notification failed:', e);
-    }
-  }
+  if (document.visibilityState === 'hidden') sendBrowserNotification(title, {body});
 }
 
 function requestNotificationPermission() {
@@ -321,6 +312,10 @@ async function checkSession() {
 
 // Router & Views Navigator
 function navigate(viewId) {
+  if (viewId === 'workout' && (!state.activeWorkout || !checkSessionUnlockStatus(state.activeWorkout.scheduledDayName).isUnlocked)) {
+    alert('This workout is locked outside its scheduled date. Check Planner to reschedule.');
+    return false;
+  }
   if (state.activeView === 'workout' && state.activeWorkout) persistActiveWorkoutSession();
   state.activeView = viewId;
   
@@ -364,11 +359,12 @@ function navigate(viewId) {
   if (viewId === 'program') loadProgramEditor();
   if (viewId === 'progress') { loadProgressReport(); loadWorkoutHistory(); }
   if (viewId === 'settings') loadSettings();
+  return true;
 }
 
 function toggleActiveSessionBanner() {
   const banner = document.getElementById('active-session-banner');
-  if (state.activeWorkout && state.activeView !== 'workout') {
+  if (state.activeWorkout && state.activeView !== 'workout' && checkSessionUnlockStatus(state.activeWorkout.scheduledDayName).isUnlocked) {
     banner.classList.remove('banner-hidden');
   } else {
     banner.classList.add('banner-hidden');
@@ -438,8 +434,7 @@ function setupEventListeners() {
 
   // Resume Workout Banner
   document.getElementById('resume-banner-btn').addEventListener('click', () => {
-    navigate('workout');
-    initActiveWorkoutWizard();
+    if (navigate('workout') !== false) initActiveWorkoutWizard();
   });
 
   // Readiness Cancel
@@ -709,24 +704,15 @@ async function requestNotificationPermission() {
   }
 }
 
-function sendBrowserNotification(title, options = {}) {
-  if (!('Notification' in window) || Notification.permission !== 'granted') return;
-
-  const defaultOptions = {
-    icon: 'https://cdn-icons-png.flaticon.com/512/2964/2964514.png',
-    badge: 'https://cdn-icons-png.flaticon.com/512/2964/2964514.png',
-    tag: 'usfit-reminder'
-  };
-
+async function sendBrowserNotification(title, options = {}) {
+  if (!('Notification' in window) || Notification.permission !== 'granted') return false;
+  const settings = { icon:'/assets/images/logo.png', tag:'usfit-reminder', data:{url:'/'}, ...options };
   try {
-    const notification = new Notification(title, { ...defaultOptions, ...options });
-    notification.onclick = () => {
-      window.focus();
-      notification.close();
-    };
-  } catch (e) {
-    console.warn('Native notification failed:', e);
-  }
+    const registration = 'serviceWorker' in navigator ? await navigator.serviceWorker.getRegistration() : null;
+    if (registration) await registration.showNotification(title, settings);
+    else { const notification = new Notification(title, settings); notification.onclick = () => { window.focus(); notification.close(); }; }
+    return true;
+  } catch (error) { console.warn('Notification unavailable:', error); return false; }
 }
 
 function checkAndTriggerDailyReminder() {
@@ -742,15 +728,17 @@ function checkAndTriggerDailyReminder() {
 
   const dayInfo = week.days[todayName];
   if (dayInfo.status === 'Upcoming' || dayInfo.status === 'Planned') {
-    const lastNotifDate = localStorage.getItem('usfit_last_notif_date');
+    if (!('Notification' in window) || Notification.permission !== 'granted') return;
+    const reminderKey = `usfit_last_notif_date_${state.user.id}`;
+    const lastNotifDate = localStorage.getItem(reminderKey);
     if (lastNotifDate !== dateStr) {
-      localStorage.setItem('usfit_last_notif_date', dateStr);
+
       const workoutObj = state.program.days.find(d => d.id === dayInfo.workoutId);
       const workoutName = workoutObj ? workoutObj.name : 'Workout Session';
       
       sendBrowserNotification(`UsFit Workout Day Alert 🏋️‍♂️`, {
         body: `Today is ${todayName}! Scheduled routine: ${workoutName}. Tap to start training together!`
-      });
+      }).then(sent => { if (sent) localStorage.setItem(reminderKey, dateStr); });
     }
   }
 }
@@ -823,62 +811,19 @@ function renderDashboardReminders() {
 }
 
 function checkSessionUnlockStatus(scheduledDay) {
-  const daysMap = { 0: 'Sunday', 1: 'Monday', 2: 'Tuesday', 3: 'Wednesday', 4: 'Thursday', 5: 'Friday', 6: 'Saturday' };
-  const todayName = daysMap[new Date().getDay()];
-
-  if (!state.schedule || !state.schedule.currentWeek) {
-    return { isUnlocked: false, reason: 'No active schedule' };
-  }
-
-  const days = state.schedule.currentWeek.days;
-
-  // Active workout in progress is always unlocked
-  if (state.activeWorkout) {
-    const dayObj = days[scheduledDay];
-    if (dayObj && state.activeWorkout.workoutId === dayObj.workoutId) {
-      return { isUnlocked: true, reason: 'In progress' };
-    }
-  }
-
-  const dayIndexMap = { "Sunday": 0, "Monday": 1, "Tuesday": 2, "Wednesday": 3, "Thursday": 4, "Friday": 5, "Saturday": 6 };
-  const dayNames = Object.keys(days);
-  const sortedDays = dayNames.sort((a, b) => dayIndexMap[a] - dayIndexMap[b]);
-  const currentDayIdx = sortedDays.indexOf(scheduledDay);
-
-  // Check 1: Enforce completion of previous scheduled session
-  if (currentDayIdx > 0) {
-    const prevDay = sortedDays[currentDayIdx - 1];
-    const prevDayInfo = days[prevDay];
-    if (prevDayInfo && prevDayInfo.status !== 'Completed') {
-      return { isUnlocked: false, reason: `Complete ${prevDay}'s session first` };
-    }
-  }
-
-  // Check 2: Today IS the exact scheduled day
-  if (todayName === scheduledDay) {
-    return { isUnlocked: true, reason: 'Today is scheduled day' };
-  }
-
-  const todayIdx = dayIndexMap[todayName];
-  const scheduledIdx = dayIndexMap[scheduledDay];
-
-  // Saturday (6) is BEFORE Sunday (0) of the upcoming week
-  if (todayName === 'Saturday' && scheduledDay === 'Sunday') {
-    return { isUnlocked: false, reason: 'Unlocks on Sunday' };
-  }
-
-  // If today is past the scheduled day in the week (catch-up)
-  if (todayIdx > scheduledIdx) {
-    return { isUnlocked: true, reason: 'Catch-up session' };
-  }
-
-  // Scheduled day is in the future
-  return { isUnlocked: false, reason: `Unlocks on ${scheduledDay}` };
+  const day = state.schedule?.currentWeek?.days?.[scheduledDay];
+  if (!day) return {isUnlocked:false,reason:'Set up your shared dates in Planner'};
+  const today = new Intl.DateTimeFormat('en-CA', { timeZone: state.schedule.timeZone || 'Europe/Budapest', year:'numeric',month:'2-digit',day:'2-digit' }).format(new Date());
+  return {isUnlocked: Boolean(day.canTrain && day.date === today), reason:day.lockReason || `Available on ${day.date}`};
+}
+function displayTrainingDate(date) {
+  return date ? new Date(date+'T12:00:00Z').toLocaleDateString(undefined,{weekday:'short',month:'short',day:'numeric',year:'numeric',timeZone:'UTC'}) : 'Date not set';
 }
 
 // Dashboard rendering
 function loadDashboard() {
   loadCoupleOverview();
+  loadAchievements();
   renderPlanOverview();
   // Update Date
   const options = { weekday: 'long', year: 'numeric', month: 'long', day: 'numeric' };
@@ -926,7 +871,7 @@ function loadDashboard() {
 
   // Draw day tiles
   const dayNames = Object.keys(days);
-  const dayIndex = { "Sunday": 0, "Monday": 1, "Tuesday": 2, "Wednesday": 3, "Thursday": 4, "Friday": 5, "Saturday": 6 };
+  const dayIndex = { "Monday": 0, "Tuesday": 1, "Wednesday": 2, "Thursday": 3, "Friday": 4, "Saturday": 5, "Sunday": 6 };
   const sortedDays = dayNames.sort((a, b) => dayIndex[a] - dayIndex[b]);
 
   sortedDays.forEach(day => {
@@ -939,7 +884,7 @@ function loadDashboard() {
     const wName = workoutObj ? workoutObj.name.split(' — ')[0] : 'Workout';
 
     slot.innerHTML = `
-      <span class="slot-day">${escapeHTML(day)}</span>
+      <span class="slot-day">${escapeHTML(displayTrainingDate(info.date))}</span>
       <span class="text-secondary font-xs">${escapeHTML(wName)}</span>
       <span class="slot-status status-${escapeHTML(info.status.toLowerCase())}">You: ${escapeHTML(info.status)}</span>
       <span class="slot-couple-status">Together: ${escapeHTML(info.overallStatus || info.status)}</span>
@@ -948,7 +893,7 @@ function loadDashboard() {
   });
 
   // Render "Today's" or next active workout panel
-  const upcomingDay = sortedDays.find(day => days[day].status !== 'Completed');
+  const upcomingDay = sortedDays.find(day => checkSessionUnlockStatus(day).isUnlocked) || sortedDays.find(day => days[day].status !== 'Completed' && days[day].date >= state.schedule.today) || sortedDays.find(day => days[day].status !== 'Completed');
   
   if (upcomingDay) {
     const activeInfo = days[upcomingDay];
@@ -966,7 +911,7 @@ function loadDashboard() {
       <div class="dashboard-workout-card">
         <div class="workout-info-block">
           <div class="tag-group">
-            <span class="tag tag-accent">${escapeHTML(upcomingDay)}</span>
+            <span class="tag tag-accent">${escapeHTML(displayTrainingDate(activeInfo.date))}</span>
             <span class="tag ${unlockStatus.isUnlocked ? '' : 'tag-warning'}">${unlockStatus.isUnlocked ? escapeHTML(activeInfo.status) : 'Locked'}</span>
           </div>
           <h3 class="margin-top-xs">${escapeHTML(workoutObj.name)}</h3>
@@ -983,7 +928,7 @@ function loadDashboard() {
     if (unlockStatus.isUnlocked) {
       document.getElementById('dashboard-start-workout-btn').addEventListener('click', () => {
         if (state.activeWorkout && state.activeWorkout.workoutId === activeInfo.workoutId) {
-          navigate('workout');
+          if (navigate('workout') !== false) initActiveWorkoutWizard();
         } else {
           openReadinessModal(upcomingDay, activeInfo.workoutId);
         }
@@ -1022,6 +967,40 @@ function loadDashboard() {
       `;
     }
   }
+
+  loadAICoachAdvice('pre-workout');
+}
+
+async function loadAICoachAdvice(type = 'pre-workout', readinessScores = {}, workoutData = {}) {
+  const coachCard = document.getElementById('ai-coach-card');
+  const coachTitle = document.getElementById('ai-coach-title');
+  const coachAdvice = document.getElementById('ai-coach-advice');
+  const coachFact = document.getElementById('ai-coach-fact');
+
+  if (!coachCard || !coachAdvice) return;
+
+  try {
+    const res = await fetch('/api/ai/coach', {
+      method: 'POST',
+      headers: { 'Content-Type': 'application/json' },
+      body: JSON.stringify({ type, readinessScores, workout: workoutData })
+    });
+    if (!res.ok) throw new Error('AI Coach unavailable');
+    const data = await res.json();
+    if (coachTitle && data.title) coachTitle.textContent = data.title;
+    if (coachAdvice && data.advice) coachAdvice.textContent = data.advice;
+    if (coachFact) {
+      if (data.funFact) {
+        coachFact.textContent = `💡 ${data.funFact}`;
+        coachFact.style.display = 'inline-block';
+      } else {
+        coachFact.style.display = 'none';
+      }
+    }
+  } catch (err) {
+    console.warn('AI Coach fetch error:', err);
+    if (coachAdvice) coachAdvice.textContent = 'Focus on controlled form and support each other through every set!';
+  }
 }
 
 // Complete Week execution
@@ -1041,6 +1020,7 @@ async function submitCompleteActiveWeek() {
 
 // Open Readiness Modal
 function openReadinessModal(dayName, workoutId) {
+  if (!checkSessionUnlockStatus(dayName).isUnlocked) { alert(checkSessionUnlockStatus(dayName).reason); return; }
   // Set User labels
   const user1Label = document.getElementById('readiness-user1-name');
   const user2Label = document.getElementById('readiness-user2-name');
@@ -1080,6 +1060,8 @@ async function startActiveWorkoutSession(e) {
   const overlay = document.getElementById('readiness-overlay');
   const dayName = overlay.getAttribute('data-target-day');
   const workoutId = overlay.getAttribute('data-target-workout');
+  await loadSchedule();
+  if (!checkSessionUnlockStatus(dayName).isUnlocked) { alert(checkSessionUnlockStatus(dayName).reason); return; }
 
   // Extract ratings
   const readinessScores = {};
@@ -1096,19 +1078,23 @@ async function startActiveWorkoutSession(e) {
   try {
     const recRes = await fetch(`/api/workout/recommendations/${workoutId}`);
     recommendations = await recRes.json();
+    if (!recRes.ok) { alert(recommendations.error); return; }
   } catch (err) {
-    console.error('Failed to retrieve progression suggestions:', err);
+    alert('Unable to start this workout. Check your connection and schedule.');
+    return;
   }
 
   // Update schedule status to "In progress" on server
   try {
-    await fetch('/api/schedule/update-day', {
+    const startResponse = await fetch('/api/schedule/update-day', {
       method: 'POST',
       headers: { 'Content-Type': 'application/json' },
       body: JSON.stringify({ dayName, status: 'In progress' })
     });
+    if (!startResponse.ok) { alert((await startResponse.json()).error); return; }
   } catch (err) {
-    console.error('Failed to flag status in progress:', err);
+    alert('Unable to start the scheduled session. Please try again.');
+    return;
   }
   // Create Active Session
   const workoutTemplate = state.program.days.find(d => d.id === workoutId);
@@ -1165,6 +1151,7 @@ async function startActiveWorkoutSession(e) {
 
 // Active Workout Wizard UI Manager
 function initActiveWorkoutWizard() {
+  if (!state.activeWorkout || !checkSessionUnlockStatus(state.activeWorkout.scheduledDayName).isUnlocked) return;
   if (!state.activeWorkout) return;
   
   const w = state.activeWorkout;
@@ -1452,6 +1439,7 @@ function renderStrengthExercisePanel() {
   renderWorkoutGuide(exercise, workoutTemplate);
   // Render Visual (Support PNG visual fallback)
   renderExerciseSVGVisual(exercise.name, document.getElementById('workout-ex-media'), exercise.media, {
+    demonstration: exercise.demonstration || state.program?.days?.flatMap(day => day.exercises || []).find(ex => ex.name === exercise.name)?.demonstration,
     source: exercise.source,
     targetMuscles: exercise.targetMuscles,
     setup: exercise.instructions && exercise.instructions.setup,
@@ -2243,7 +2231,7 @@ function checkPlannerSelections() {
   if (checked.length === 3) {
     saveBtn.disabled = false;
     
-    const dayIndex = { "Sunday": 0, "Monday": 1, "Tuesday": 2, "Wednesday": 3, "Thursday": 4, "Friday": 5, "Saturday": 6 };
+    const dayIndex = { "Monday": 0, "Tuesday": 1, "Wednesday": 2, "Thursday": 3, "Friday": 4, "Saturday": 5, "Sunday": 6 };
     const sortedDays = checked.map(c => c.value).sort((a, b) => dayIndex[a] - dayIndex[b]);
 
     // Show program sequence layout mapping description
@@ -2329,7 +2317,7 @@ function loadPlanner() {
     const days = state.schedule.currentWeek.days;
     Object.keys(days).forEach(day => {
       const workoutObj = state.program.days.find(d => d.id === days[day].workoutId);
-      fromSelect.innerHTML += `<option value="${day}">${day} (${workoutObj ? workoutObj.name.split(' — ')[0] : 'Workout'})</option>`;
+      fromSelect.innerHTML += `<option value="${day}">${displayTrainingDate(days[day].date)} (${workoutObj ? workoutObj.name.split(' — ')[0] : 'Workout'})</option>`;
     });
 
     const allDays = ["Sunday", "Monday", "Tuesday", "Wednesday", "Thursday", "Friday", "Saturday"];
@@ -2350,7 +2338,7 @@ async function saveWeeklyPlan(e) {
   const checked = Array.from(checkboxes).filter(c => c.checked);
 
   // Chronologically order days
-  const dayIndex = { "Sunday": 0, "Monday": 1, "Tuesday": 2, "Wednesday": 3, "Thursday": 4, "Friday": 5, "Saturday": 6 };
+  const dayIndex = { "Monday": 0, "Tuesday": 1, "Wednesday": 2, "Thursday": 3, "Friday": 4, "Saturday": 5, "Sunday": 6 };
   const sortedDays = checked.map(c => c.value).sort((a, b) => dayIndex[a] - dayIndex[b]);
 
   const daysMapping = {};
@@ -3006,11 +2994,32 @@ function renderExerciseSVGVisual(exerciseName, targetContainer, customMedia = nu
   if (mediaInfo?.source) {
     const source = mediaInfo.source;
     const url = safeGuideUrl(source.url);
+    const demo = mediaInfo.demonstration;
+    const images = (demo?.images || []).filter(path => /^\/assets\/images\/exercises\/[a-zA-Z0-9_./-]+$/.test(path));
     targetContainer.innerHTML = `<div class="source-demo-card"><span class="eyebrow">LEARN THE MOVEMENT</span>
-      <h3>${escapeHTML(exerciseName)}</h3><p>${escapeHTML(mediaInfo.cues || 'Control the movement before adding weight.')}</p>
-      ${url ? `<a class="btn btn-accent" href="${escapeHTML(url)}" target="_blank" rel="noopener noreferrer">View demonstration ↗</a>` : ''}
+      <h3>${escapeHTML(exerciseName)}</h3>
+      ${images.length ? `<img class="exercise-demo-photo" alt="${escapeHTML(exerciseName)} position reference" src="${escapeHTML(images[0])}">
+      <div class="demo-controls"><button type="button" class="btn btn-secondary demo-prev" aria-label="Previous demonstration position">←</button><span class="demo-position" aria-live="polite"></span><button type="button" class="btn btn-secondary demo-next" aria-label="Next demonstration position">→</button></div>
+      <small>${escapeHTML(demo.provider)} · ${escapeHTML(demo.license)} · <a href="${escapeHTML(demo.url)}" target="_blank" rel="noopener noreferrer">Image source</a> · <a href="${escapeHTML(demo.licenseUrl)}" target="_blank" rel="noopener noreferrer">License</a></small>
+      ${demo.note ? `<small>${escapeHTML(demo.note)}</small>` : ''}` : ''}
+      <p>${escapeHTML(mediaInfo.cues || 'Control the movement before adding weight.')}</p>
+      ${url ? `<a class="btn btn-accent technique-link" href="${escapeHTML(url)}" target="_blank" rel="noopener noreferrer">Read technique guide ↗</a>` : ''}
       <small>${escapeHTML(source.provider)} · Opens the original guide in a new tab</small>
       ${source.note ? `<small>${escapeHTML(source.note)}</small>` : ''}</div>`;
+    if (images.length) {
+      let position = 0;
+      const photo = targetContainer.querySelector('.exercise-demo-photo');
+      const update = () => {
+        photo.src = images[position];
+        photo.alt = `${exerciseName} — position ${position + 1} of ${images.length}`;
+        targetContainer.querySelector('.demo-position').textContent = `Position ${position + 1} / ${images.length}`;
+      };
+      targetContainer.querySelectorAll('.demo-controls button').forEach(button => { button.disabled = images.length < 2; });
+      targetContainer.querySelector('.demo-prev').onclick = () => { position = (position + images.length - 1) % images.length; update(); };
+      targetContainer.querySelector('.demo-next').onclick = () => { position = (position + 1) % images.length; update(); };
+      photo.onerror = () => { photo.alt = 'Photo unavailable. Use the technique guide below.'; };
+      update();
+    }
     return;
   }
   if (mediaInfo && !mediaInfo.source) {
@@ -3279,9 +3288,9 @@ function renderPlanOverview() {
   const female = state.user?.gender === 'female';
   const html = `<div class="plan-hero"><div><span class="eyebrow">BUILT FOR YOUR GOALS</span>
     <h2>${female ? 'Grow strong. Feel confident.' : 'Build your frame.'}</h2>
-    <p>${escapeHTML(state.program.goal)}</p></div><div class="plan-frequency"><strong>3</strong><span>days a week<br>up to 2 hours</span></div></div>
+    <p>${escapeHTML(state.program.goal)}</p><small class="text-secondary">${escapeHTML(state.user.displayName)}’s personal plan · shared dates, individual exercises</small></div><div class="plan-frequency"><strong>3</strong><span>days a week<br>up to 2 hours</span></div></div>
     <div class="plan-timeline"><span><b>08 min</b> Easy warm-up</span><span><b>55–80 min</b> Lift & rest</span><span><b>05–10 min</b> Cool down</span></div>
-    <div class="plan-day-grid">${state.program.days.map((day, index) => `<details class="plan-day"><summary><span class="eyebrow">SESSION 0${index + 1}</span><h3>${escapeHTML(day.name.split(' — ')[1] || day.name)}</h3><p>${day.exercises.length} exercises · ${day.exercises.reduce((n, e) => n + e.setsCount, 0)} working sets</p><span class="plan-open">View session +</span></summary><div class="plan-exercises">${day.exercises.map(ex => `<div><strong>${escapeHTML(ex.name)}</strong><span>${ex.setsCount} × ${ex.repRangeMin}–${ex.repRangeMax} ${ex.isTimed ? 'sec' : 'reps'}${ex.perSide ? ' / side' : ''} · ${ex.restSeconds}s rest</span>${safeGuideUrl(ex.source?.url) ? `<a href="${escapeHTML(safeGuideUrl(ex.source.url))}" target="_blank" rel="noopener noreferrer">Technique guide ↗</a>` : ''}</div>`).join('')}</div></details>`).join('')}</div>
+    <div class="plan-day-grid">${state.program.days.map((day, index) => `<details class="plan-day"><summary><span class="eyebrow">SESSION 0${index + 1}</span><p class="plan-date">${escapeHTML(displayTrainingDate(Object.values(state.schedule?.currentWeek?.days || {}).find(slot => slot.workoutId === day.id && !slot.rescheduledTo)?.date))}</p><h3>${escapeHTML(day.name.split(' — ')[1] || day.name)}</h3><p>${day.exercises.length} exercises · ${day.exercises.reduce((n, e) => n + e.setsCount, 0)} working sets</p><span class="plan-open">View session +</span></summary><div class="plan-exercises">${day.exercises.map(ex => `<div><strong>${escapeHTML(ex.name)}</strong><span>${ex.setsCount} × ${ex.repRangeMin}–${ex.repRangeMax} ${ex.isTimed ? 'sec' : 'reps'}${ex.perSide ? ' / side' : ''} · ${ex.restSeconds}s rest</span>${safeGuideUrl(ex.source?.url) ? `<a href="${escapeHTML(safeGuideUrl(ex.source.url))}" target="_blank" rel="noopener noreferrer">Technique guide ↗</a>` : ''}</div>`).join('')}</div></details>`).join('')}</div>
     <details class="plan-guidance"><summary>How to make this plan work for you</summary><p>${escapeHTML(state.program.guidance)}</p><p>Before your first heavy lift, do 2–3 gradually heavier practice sets. Leave a rest day between sessions where possible. Optional easy cardio can use the remaining time; two hours is a limit, not a target.</p><p>Core training builds strength; it does not selectively remove tummy fat. Visible definition also depends on nutrition, body composition and genetics.</p><a href="https://acsm.org/resistance-training-guidelines-update-2026/" target="_blank" rel="noopener noreferrer">Training principles: ACSM ↗</a></details>`;
   ['personal-plan-overview', 'program-plan-overview'].forEach(id => { const el = document.getElementById(id); if (el) el.innerHTML = html; });
 }
@@ -3290,4 +3299,26 @@ function renderWorkoutGuide(exercise, day) {
   if (!el) return;
   el.innerHTML = `<div class="coach-metrics"><span><small>REST</small><strong>${exercise.restSeconds}s</strong></span><span><small>EFFORT</small><strong>1–3 reps left</strong></span><span><small>SESSION</small><strong>${state.activeWorkout.currentExerciseIdx + 1} / ${day.exercises.length}</strong></span></div>
     <p>${exercise.isTimed ? 'Use the hold timer. Stop the hold when you can no longer maintain position.' : 'Choose a load you can control through every rep. Increase reps before increasing weight.'}${exercise.perSide ? ' Complete both sides; enter the reps or seconds for one side.' : ''}</p>`;
+}
+
+setInterval(() => {
+  if (state.activeView === 'workout' && state.activeWorkout && !checkSessionUnlockStatus(state.activeWorkout.scheduledDayName).isUnlocked) {
+    stopAllActiveTimers();
+    navigate('dashboard');
+    setSaveStatus('Scheduled date ended. Your device draft is retained.');
+  }
+}, 30000);
+
+async function loadAchievements() {
+  const container = document.getElementById('couples-achievements');
+  container.textContent = 'Loading your shared milestones…';
+  try {
+    const response = await fetch('/api/achievements');
+    if (!response.ok) throw new Error('Milestones unavailable');
+    const data = await response.json();
+    container.innerHTML = `<div class="streak-heading"><div><span class="eyebrow">STRONGER TOGETHER</span><h2>${data.streak ? `🔥 ${data.streak} week${data.streak === 1 ? '' : 's'} together` : 'Your first perfect week starts here'}</h2></div><span>Best: ${data.bestStreak} weeks</span></div>
+      <p class="text-secondary">Both finish all 3 sessions to earn a perfect week. This week stays open until Sunday.</p>
+      <div class="couple-week-counts">${data.members.map(member => `<div><strong>${escapeHTML(member.name)}</strong><span>${member.completed} / ${member.target} this week</span><progress max="3" value="${member.completed}" aria-label="${escapeHTML(member.name)} weekly sessions"></progress></div>`).join('')}</div>
+      <details class="milestone-details"><summary>Our badges · ${data.badges.filter(b => b.earned).length} / ${data.badges.length} unlocked</summary><div class="badge-grid">${data.badges.map(b => `<article class="milestone-badge ${b.earned ? 'earned' : ''}"><span aria-hidden="true">${escapeHTML(b.icon)}</span><h3>${escapeHTML(b.title)}</h3><p>${escapeHTML(b.description)}</p><strong>${b.earned ? 'Unlocked ✓' : `${b.value.toLocaleString()} / ${b.target.toLocaleString()}`}</strong><progress max="100" value="${b.progress}" aria-label="${escapeHTML(b.title)} progress"></progress></article>`).join('')}</div></details>`;
+  } catch (error) { container.textContent = 'Milestones are unavailable right now. Reopen Home to retry.'; }
 }

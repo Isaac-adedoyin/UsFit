@@ -7,6 +7,12 @@ process.env.USFIT_DATA_DIR = fs.mkdtempSync(path.join(os.tmpdir(), 'usfit-api-')
 process.env.USFIT_PASSPHRASE = 'test-only-private-passphrase';
 const app = require('../server');
 const db = require('../db');
+const { dateForDay, todayInZone, DAY_ORDER } = require('../schedule-dates');
+const today = todayInZone();
+const year = Number(today.slice(0,4));
+const weekId = [year-1,year,year+1].flatMap(y=>Array.from({length:53},(_,i)=>`${y}-W${String(i+1).padStart(2,'0')}`)).find(w=>DAY_ORDER.some(d=>dateForDay(w,d)===today));
+const scheduledDayName = DAY_ORDER.find(d=>dateForDay(weekId,d)===today);
+db.saveSchedule({currentWeek:{weekId,days:{[scheduledDayName]:{workoutId:'day_1',status:'Upcoming',userStatuses:{usr_isaac:'Upcoming',usr_mary:'Upcoming'}}}},completedWeeks:[]});
 let server, base, cookie;
 before(async () => {
   server = app.listen(0, '127.0.0.1');
@@ -33,7 +39,7 @@ test('passphrase protection and approved sign-in', async () => {
 });
 test('completion retries are idempotent and invalid dates are rejected', async () => {
   const user = db.getUser(Object.keys(app.accountGenders)[0]);
-  const body = { workoutId: 'day_1', startTime: '2026-09-30T08:00:00Z', endTime: '2026-09-30T09:00:00Z', logs: { [user.id]: { ex_1_1: [{ completed: true, reps: 10, weight: 20 }] } }, sessionNotes: 'Great session' };
+  const body = { scheduledDayName, workoutId: 'day_1', startTime: '2026-09-30T08:00:00Z', endTime: '2026-09-30T09:00:00Z', logs: { [user.id]: { ex_1_1: [{ completed: true, reps: 10, weight: 20 }] } }, sessionNotes: 'Great session' };
   assert.equal((await request('/api/workout/complete', { ...body, startTime: 'bad-date' })).status, 400);
   assert.equal((await request('/api/workout/complete', body)).status, 200);
   assert.equal((await request('/api/workout/complete', body)).status, 200);
@@ -60,7 +66,7 @@ test('Mary and Isaac receive distinct programs and cannot save each other’s se
   const mismatch = await fetch(base+'/api/program', {headers:{Cookie:cookie,'X-Usfit-User':isaac.id}});
   assert.equal(mismatch.status,409);
   assert.equal((await mismatch.json()).code,'ACCOUNT_CHANGED');
-  const active = {workoutId:'day_1',phase:'strength',activeLoggerUserId:isaac.id,logs:{[isaac.id]:{}}};
+  const active = {scheduledDayName,workoutId:'day_1',phase:'strength',activeLoggerUserId:isaac.id,logs:{[isaac.id]:{}}};
   assert.equal((await request('/api/workout/active',{activeWorkout:active})).status,403);
   const completion = {workoutId:'day_1',startTime:'2026-10-01T08:00:00Z',endTime:'2026-10-01T09:00:00Z',logs:{[isaac.id]:{}}};
   assert.equal((await request('/api/workout/complete',completion)).status,403);
@@ -70,4 +76,19 @@ test('Mary and Isaac receive distinct programs and cannot save each other’s se
   assert.match(isaacProgram.days[0].name,/Back/);
   assert.equal(isaacProgram.days[0].exercises.find(e=>e.name==='Barbell Curl').setsCount,3);
   assert.equal((await (await request('/api/workout/active')).json()).activeWorkout,null);
+});
+
+test('server blocks starting and completing on a different date and exposes exact dates', async()=>{
+ const schedule=db.getSchedule();
+ const otherDay=DAY_ORDER.find(day=>day!==scheduledDayName);
+ schedule.currentWeek.days[otherDay]={workoutId:'day_2',status:'Upcoming',userStatuses:{usr_isaac:'Upcoming',usr_mary:'Upcoming'}};
+ db.saveSchedule(schedule);
+ const view=await (await request('/api/schedule')).json();
+ assert.equal(view.currentWeek.days[otherDay].date,dateForDay(weekId,otherDay));
+ assert.equal(view.currentWeek.days[otherDay].canTrain,false);
+ assert.equal((await request('/api/workout/recommendations/day_2')).status,403);
+ const active={workoutId:'day_2',scheduledDayName:otherDay,phase:'strength',activeLoggerUserId:'usr_isaac',logs:{usr_isaac:{}}};
+ assert.equal((await request('/api/workout/active',{activeWorkout:active})).status,403);
+ assert.equal((await request('/api/workout/complete',{...active,startTime:'2026-10-01T10:00:00Z',endTime:'2026-10-01T11:00:00Z'})).status,403);
+ assert.equal((await request('/api/schedule/update-day',{dayName:otherDay,status:'In progress'})).status,403);
 });
