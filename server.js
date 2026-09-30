@@ -11,7 +11,7 @@ const { DAY_ORDER, TIME_ZONE, dateForDay, todayInZone, workoutAccess } = require
 
 const app = express();
 const PORT = process.env.PORT || 3000;
-const sessionSecret = process.env.SESSION_SECRET || crypto.randomBytes(32).toString('hex');
+const sessionSecret = process.env.SESSION_SECRET || 'usfit-couples-session-secret-key-2026-v1';
 
 // Trust proxy for secure cookies on Vercel deployment
 app.set('trust proxy', 1);
@@ -35,17 +35,14 @@ app.use('/api', (req, res, next) => {
 app.use(express.urlencoded({ extended: true }));
 
 // Sessions configuration (using cookie-session for serverless deployment on Vercel)
-app.use((req, res, next) => {
-  const isSecure = req.secure || req.headers['x-forwarded-proto'] === 'https';
-  cookieSession({
-    name: 'session',
-    keys: [sessionSecret],
-    maxAge: 30 * 24 * 60 * 60 * 1000, // 30 days
-    secure: isSecure,
-    sameSite: 'lax',
-    httpOnly: true
-  })(req, res, next);
-});
+app.use(cookieSession({
+  name: 'session',
+  keys: [sessionSecret],
+  maxAge: 30 * 24 * 60 * 60 * 1000, // 30 days
+  secure: false,
+  sameSite: 'lax',
+  httpOnly: true
+}));
 
 // Serve static frontend files
 app.use(express.static(path.join(__dirname, 'public')));
