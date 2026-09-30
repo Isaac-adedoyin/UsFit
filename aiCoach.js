@@ -1,16 +1,9 @@
 /**
  * UsFit AI Couple's Fitness Coach Module
- * 
- * Provides personalized AI coaching advice before workouts, during exercise sets,
- * and after completing workouts.
- * 
- * TO ENABLE LIVE GEMINI AI CALLS:
- * 1. Get a free API Key from https://aistudio.google.com
- * 2. Add GEMINI_API_KEY=your_key_here to your .env file
- * 3. Uncomment the GoogleGenAI block below in generateAICoachAdvice()
+ * Powered by Groq AI & Rule-Based Fallback
  */
 
-// const { GoogleGenAI } = require('@google/genai');
+const Groq = require('groq-sdk');
 
 /**
  * Generate AI Coach Advice
@@ -20,17 +13,11 @@
 async function generateAICoachAdvice(context) {
   const { type = 'pre-workout', userNames = {}, readinessScores = {}, workout = {}, history = [] } = context;
 
-  /* 
-  =============================================================================
-  LIVE AI INTEGRATION (COMMENTED OUT BY DEFAULT)
-  To activate:
-  1. Set process.env.GEMINI_API_KEY in your environment / .env file
-  2. Uncomment the block below and comment out the fallback return line below it
-  =============================================================================
+  const apiKey = process.env.GROQ_API_KEY;
 
-  if (process.env.GEMINI_API_KEY) {
+  if (apiKey) {
     try {
-      const ai = new GoogleGenAI({ apiKey: process.env.GEMINI_API_KEY });
+      const groq = new Groq({ apiKey });
       const prompt = `
 You are an encouraging, expert couple's fitness coach for UsFit. 
 Users: ${userNames.u1 || 'Partner 1'} and ${userNames.u2 || 'Partner 2'}.
@@ -39,31 +26,32 @@ Readiness Scores: ${JSON.stringify(readinessScores)}
 Workout Details: ${JSON.stringify(workout)}
 History Length: ${history.length}
 
-Provide short, punchy, actionable advice (under 60 words). 
-Respond STRICTLY in JSON format with fields:
+Provide short, punchy, actionable advice (under 50 words). 
+Respond STRICTLY in valid JSON format with keys:
 {
-  "title": "Short catchy title",
+  "title": "Short catchy title with an emoji",
   "advice": "Encouraging, personalized couple coaching tip",
   "funFact": "Fun real-world comparison or motivational note"
 }
       `;
 
-      const response = await ai.models.generateContent({
-        model: 'gemini-2.0-flash',
-        contents: prompt,
+      const response = await groq.chat.completions.create({
+        messages: [{ role: 'user', content: prompt }],
+        model: 'openai/gpt-oss-20b',
+        response_format: { type: 'json_object' }
       });
 
-      const responseText = response.text;
-      const parsed = JSON.parse(responseText.replace(/```json|```/g, '').trim());
-      return parsed;
+      const responseText = response.choices[0]?.message?.content;
+      if (responseText) {
+        const parsed = JSON.parse(responseText);
+        return parsed;
+      }
     } catch (err) {
-      console.warn('[AI Coach] Gemini API call failed, using rule-based fallback:', err.message);
+      console.warn('[AI Coach] Groq API call error, using rule-based fallback:', err.message);
     }
   }
-  =============================================================================
-  */
 
-  // SMART RULE-BASED FALLBACK ENGINE (Active by default until API key is set)
+  // SMART RULE-BASED FALLBACK ENGINE (Active if API is unavailable)
   return getRuleBasedAdvice(type, userNames, readinessScores, workout, history);
 }
 
