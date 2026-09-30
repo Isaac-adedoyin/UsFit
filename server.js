@@ -35,14 +35,17 @@ app.use('/api', (req, res, next) => {
 app.use(express.urlencoded({ extended: true }));
 
 // Sessions configuration (using cookie-session for serverless deployment on Vercel)
-app.use(cookieSession({
-  name: 'session',
-  keys: [sessionSecret],
-  maxAge: 30 * 24 * 60 * 60 * 1000, // 30 days
-  secure: process.env.NODE_ENV === 'production',
-  sameSite: 'lax',
-  httpOnly: true
-}));
+app.use((req, res, next) => {
+  const isSecure = req.secure || req.headers['x-forwarded-proto'] === 'https';
+  cookieSession({
+    name: 'session',
+    keys: [sessionSecret],
+    maxAge: 30 * 24 * 60 * 60 * 1000, // 30 days
+    secure: isSecure,
+    sameSite: 'lax',
+    httpOnly: true
+  })(req, res, next);
+});
 
 // Serve static frontend files
 app.use(express.static(path.join(__dirname, 'public')));
