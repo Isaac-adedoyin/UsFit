@@ -52,7 +52,7 @@ function getAchievements(data, now=new Date()) {
   const current=getWeek(currentWeek);
   const badge=(id,title,description,value,target,icon)=>({id,title,description,value:Math.round(value*10)/10,target,earned:value>=target,progress:Math.min(100,Math.floor(value/target*100)),icon});
   return {streak,bestStreak:best,perfectWeeks:perfect.length,currentWeek,volumeKg:Math.round(volumeKg),distanceKm:Math.round(distanceKm*10)/10,totalSessions,
-    members:members.map(m=>({id:m.id,name:m.displayName,completed:current[m.id].size,target:3})),
+    members:members.map(m=>({id:m.id,name:m.displayName,completed:current[m.id]?.size || 0,target:3})),
     badges:[badge('perfect-week','Perfect attendance','Both complete all 3 sessions in one calendar week.',perfect.length,1,'★'),badge('four-weeks','Better together','Complete 4 consecutive perfect weeks.',best,4,'🔥'),badge('ten-sessions','Showing up','Complete 10 sessions between you.',totalSessions,10,'✓'),badge('ten-tonnes','10-tonne team','Lift 10,000 kg of combined working-set volume.',volumeKg,10000,'🏋'),badge('hundred-km','100 km club','Log 100 km on the treadmill together.',distanceKm,100,'↗')]};
 }
 module.exports={getAchievements,isoWeek};

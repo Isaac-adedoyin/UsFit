@@ -822,16 +822,18 @@ function displayTrainingDate(date) {
 
 // Dashboard rendering
 function loadDashboard() {
-  loadCoupleOverview();
-  loadAchievements();
-  renderPlanOverview();
+  try { loadCoupleOverview(); } catch (e) { console.warn('Couple overview error:', e); }
+  try { loadAchievements(); } catch (e) { console.warn('Achievements load error:', e); }
+  try { renderPlanOverview(); } catch (e) { console.warn('Plan overview error:', e); }
+  
   // Update Date
   const options = { weekday: 'long', year: 'numeric', month: 'long', day: 'numeric' };
-  document.getElementById('dashboard-date-str').textContent = new Date().toLocaleDateString(undefined, options);
+  const dateEl = document.getElementById('dashboard-date-str');
+  if (dateEl) dateEl.textContent = new Date().toLocaleDateString(undefined, options);
 
   // Render reminders banner and trigger notification check
-  renderDashboardReminders();
-  checkAndTriggerDailyReminder();
+  try { renderDashboardReminders(); } catch (e) { console.warn('Reminders error:', e); }
+  try { checkAndTriggerDailyReminder(); } catch (e) { console.warn('Daily reminder error:', e); }
 
   // Render weekly consistency card
   const progressTitle = document.getElementById('progress-weeks-title');
