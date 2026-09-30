@@ -17,12 +17,12 @@ function todayInZone(now = new Date()) {
   const parts = Object.fromEntries(new Intl.DateTimeFormat('en-US',{timeZone:TIME_ZONE,year:'numeric',month:'2-digit',day:'2-digit'}).formatToParts(now).map(p=>[p.type,p.value]));
   return `${parts.year}-${parts.month}-${parts.day}`;
 }
-function workoutAccess(schedule, userId, workoutId, scheduledDay, now = new Date()) {
+function workoutAccess(schedule, userId, workoutId, scheduledDay, now = new Date(), allowEarly = true) {
   const week = schedule?.currentWeek;
   const day = week?.days?.[scheduledDay];
   const date = week && dateForDay(week.weekId, scheduledDay);
   if (!day || day.workoutId !== workoutId || !date || day.rescheduledTo) return {allowed:false,error:'This workout is not on the current schedule.'};
-  if (date !== todayInZone(now)) return {allowed:false,date,error:`This workout is only available on ${date} (${TIME_ZONE}). Reschedule it in Planner to change the date.`};
+  if (!allowEarly && date !== todayInZone(now)) return {allowed:false,date,error:`This workout is scheduled for ${date}.`};
   if ((day.userStatuses?.[userId] || day.status) === 'Completed') return {allowed:false,date,error:'You have already completed this scheduled workout.'};
   return {allowed:true,date};
 }

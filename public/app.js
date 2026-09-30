@@ -814,7 +814,13 @@ function checkSessionUnlockStatus(scheduledDay) {
   const day = state.schedule?.currentWeek?.days?.[scheduledDay];
   if (!day) return {isUnlocked:false,reason:'Set up your shared dates in Planner'};
   const today = new Intl.DateTimeFormat('en-CA', { timeZone: state.schedule.timeZone || 'Europe/Budapest', year:'numeric',month:'2-digit',day:'2-digit' }).format(new Date());
-  return {isUnlocked: Boolean(day.canTrain && day.date === today), reason:day.lockReason || `Available on ${day.date}`};
+  const isToday = day.date === today;
+  const isCompleted = (day.userStatuses?.[state.user?.id] || day.status) === 'Completed';
+  return {
+    isUnlocked: !isCompleted,
+    isToday,
+    reason: isCompleted ? 'Completed' : (isToday ? 'Scheduled Today' : `Scheduled for ${displayTrainingDate(day.date)}`)
+  };
 }
 function displayTrainingDate(date) {
   return date ? new Date(date+'T12:00:00Z').toLocaleDateString(undefined,{weekday:'short',month:'short',day:'numeric',year:'numeric',timeZone:'UTC'}) : 'Date not set';
@@ -880,6 +886,7 @@ function loadDashboard() {
     const info = days[day];
     const slot = document.createElement('div');
     slot.className = `session-slot ${info.status.toLowerCase()}`;
+    slot.style.cursor = 'pointer';
     
     // Find Workout Name
     const workoutObj = state.program.days.find(d => d.id === info.workoutId);
@@ -891,11 +898,14 @@ function loadDashboard() {
       <span class="slot-status status-${escapeHTML(info.status.toLowerCase())}">You: ${escapeHTML(info.status)}</span>
       <span class="slot-couple-status">Together: ${escapeHTML(info.overallStatus || info.status)}</span>
     `;
+    slot.addEventListener('click', () => {
+      openReadinessModal(day, info.workoutId);
+    });
     slotsContainer.appendChild(slot);
   });
 
   // Render "Today's" or next active workout panel
-  const upcomingDay = sortedDays.find(day => checkSessionUnlockStatus(day).isUnlocked) || sortedDays.find(day => days[day].status !== 'Completed' && days[day].date >= state.schedule.today) || sortedDays.find(day => days[day].status !== 'Completed');
+  const upcomingDay = sortedDays.find(day => days[day].status !== 'Completed') || sortedDays[0];
   
   if (upcomingDay) {
     const activeInfo = days[upcomingDay];
@@ -905,8 +915,8 @@ function loadDashboard() {
     let btnText = "Start Gym Session";
     if (state.activeWorkout && state.activeWorkout.workoutId === activeInfo.workoutId) {
       btnText = "Resume Gym Session";
-    } else if (!unlockStatus.isUnlocked) {
-      btnText = `🔒 Locked — ${unlockStatus.reason}`;
+    } else if (!unlockStatus.isToday && unlockStatus.isUnlocked) {
+      btnText = `Start Session (${displayTrainingDate(activeInfo.date)})`;
     }
 
     document.getElementById('today-workout-panel').innerHTML = `
@@ -914,28 +924,27 @@ function loadDashboard() {
         <div class="workout-info-block">
           <div class="tag-group">
             <span class="tag tag-accent">${escapeHTML(displayTrainingDate(activeInfo.date))}</span>
-            <span class="tag ${unlockStatus.isUnlocked ? '' : 'tag-warning'}">${unlockStatus.isUnlocked ? escapeHTML(activeInfo.status) : 'Locked'}</span>
+            <span class="tag ${unlockStatus.isToday ? 'tag-success' : 'tag-info'}">${unlockStatus.isToday ? 'Today' : 'Upcoming'}</span>
           </div>
           <h3 class="margin-top-xs">${escapeHTML(workoutObj.name)}</h3>
           <p class="text-secondary font-sm"><strong>Focus:</strong> ${escapeHTML(workoutObj.focus)}</p>
           <p class="text-secondary font-sm"><strong>Est. Duration:</strong> ${escapeHTML(workoutObj.estimatedMinutes || '75–110')} min · Up to 2 hours | Exercises: ${workoutObj.exercises.length}</p>
-          ${!unlockStatus.isUnlocked ? `<p class="font-xs margin-top-xs" style="color: #f59e0b;">⏳ <strong>Session Locked:</strong> ${escapeHTML(unlockStatus.reason)}.</p>` : ''}
         </div>
         <div>
-          <button id="dashboard-start-workout-btn" class="${unlockStatus.isUnlocked ? 'btn btn-accent btn-lg' : 'btn btn-secondary btn-lg'}" ${unlockStatus.isUnlocked ? '' : 'disabled style="opacity: 0.6; cursor: not-allowed;"'}>${btnText}</button>
+          <button id="dashboard-start-workout-btn" class="btn btn-accent btn-lg">${btnText}</button>
         </div>
       </div>
     `;
 
-    if (unlockStatus.isUnlocked) {
-      document.getElementById('dashboard-start-workout-btn').addEventListener('click', () => {
-        if (state.activeWorkout && state.activeWorkout.workoutId === activeInfo.workoutId) {
-          if (navigate('workout') !== false) initActiveWorkoutWizard();
-        } else {
-          openReadinessModal(upcomingDay, activeInfo.workoutId);
-        }
-      });
-    }
+    document.getElementById('dashboard-start-workout-btn').addEventListener('click', () => {
+      if (state.activeWorkout && state.activeWorkout.workoutId === activeInfo.workoutId) {
+        if (navigate('workout') !== false) initActiveWorkoutWizard();
+      } else {
+        openReadinessModal(upcomingDay, activeInfo.workoutId);
+      }
+    });
+
+  }
 
   } else {
     const mySessionsCompleted = Object.values(days).every(d => d.status === 'Completed');
